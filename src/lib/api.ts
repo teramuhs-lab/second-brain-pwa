@@ -128,7 +128,14 @@ export async function fetchEntries(
 
 // Mark entry as done
 export async function markDone(pageId: string, database: string): Promise<UpdateResponse> {
-  const statusValue = database === 'projects' ? 'Complete' : 'Done';
+  let statusValue: string;
+  if (database === 'projects') {
+    statusValue = 'Complete';
+  } else if (database === 'people') {
+    statusValue = 'Dormant';
+  } else {
+    statusValue = 'Done';
+  }
   return updateEntry(pageId, database, { status: statusValue });
 }
 

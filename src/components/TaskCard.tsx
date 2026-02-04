@@ -38,7 +38,7 @@ export function TaskCard({
   const currentX = useRef(0);
 
   const statusOptions = STATUS_OPTIONS[database] || ['Todo', 'Done'];
-  const completedStatus = database === 'projects' ? 'Complete' : 'Done';
+  const completedStatus = database === 'projects' ? 'Complete' : database === 'people' ? 'Dormant' : 'Done';
   const isCompleted = task.status === completedStatus;
 
   // Swipe handlers
@@ -50,16 +50,19 @@ export function TaskCard({
   const handleTouchMove = (e: React.TouchEvent) => {
     currentX.current = e.touches[0].clientX;
     const diff = currentX.current - startX.current;
-    // Only allow right swipe (positive) up to 100px
-    setSwipeOffset(Math.min(Math.max(diff, 0), 100));
+    // Allow both directions: right (positive) for complete, left (negative) for snooze
+    setSwipeOffset(Math.min(Math.max(diff, -100), 100));
   };
 
   const handleTouchEnd = async () => {
     if (swipeOffset > 60) {
-      // Trigger complete
+      // Right swipe: Trigger complete
       setIsLoading(true);
       await onComplete(task.id);
       setIsLoading(false);
+    } else if (swipeOffset < -60) {
+      // Left swipe: Open snooze picker
+      setShowSnooze(true);
     }
     setSwipeOffset(0);
   };
@@ -96,13 +99,24 @@ export function TaskCard({
 
   return (
     <div className="relative overflow-hidden rounded-xl">
-      {/* Swipe background */}
+      {/* Right swipe background (complete) */}
       <div
         className="absolute inset-y-0 left-0 flex items-center justify-start bg-[var(--accent-green)] px-4 transition-opacity"
         style={{ opacity: swipeOffset > 20 ? 1 : 0, width: '100px' }}
       >
         <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
           <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+
+      {/* Left swipe background (snooze) */}
+      <div
+        className="absolute inset-y-0 right-0 flex items-center justify-end bg-[var(--accent-cyan)] px-4 transition-opacity"
+        style={{ opacity: swipeOffset < -20 ? 1 : 0, width: '100px' }}
+      >
+        <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 6v6l4 2" />
         </svg>
       </div>
 
