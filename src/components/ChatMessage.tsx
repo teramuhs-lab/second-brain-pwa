@@ -1,54 +1,67 @@
 'use client';
 
+import { ReactNode } from 'react';
+
 interface ChatMessageProps {
   role: 'user' | 'assistant';
   content: string;
   toolsUsed?: string[];
 }
 
+// Helper to format inline markdown (bold, etc.)
+function formatInlineMarkdown(text: string): ReactNode[] {
+  const parts = text.split(/\*\*(.*?)\*\*/g);
+  if (parts.length === 1) {
+    return [text];
+  }
+  return parts.map((part, j) =>
+    j % 2 === 1 ? (
+      <strong key={j} className="font-semibold text-[var(--text-primary)]">
+        {part}
+      </strong>
+    ) : (
+      <span key={j}>{part}</span>
+    )
+  );
+}
+
 export function ChatMessage({ role, content, toolsUsed = [] }: ChatMessageProps) {
   const isUser = role === 'user';
 
-  // Format the response text (basic markdown-like formatting)
+  // Format the response text with markdown support
   const formatContent = (text: string) => {
     return text.split('\n').map((line, i) => {
-      // Handle bullet points
-      if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
+      const trimmed = line.trim();
+
+      // Handle bullet points (- or *)
+      if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+        const bulletContent = trimmed.substring(2);
         return (
           <li key={i} className="ml-4 list-disc">
-            {line.trim().substring(2)}
+            {formatInlineMarkdown(bulletContent)}
           </li>
         );
       }
+
       // Handle numbered lists
-      if (/^\d+\.\s/.test(line.trim())) {
+      const numberedMatch = trimmed.match(/^(\d+)\.\s(.*)$/);
+      if (numberedMatch) {
         return (
           <li key={i} className="ml-4 list-decimal">
-            {line.trim().replace(/^\d+\.\s/, '')}
+            {formatInlineMarkdown(numberedMatch[2])}
           </li>
         );
       }
-      // Handle bold text with **
-      const parts = line.split(/\*\*(.*?)\*\*/g);
-      if (parts.length > 1) {
+
+      // Regular paragraph with inline formatting
+      if (trimmed) {
         return (
           <p key={i}>
-            {parts.map((part, j) =>
-              j % 2 === 1 ? (
-                <strong key={j} className="font-semibold text-[var(--text-primary)]">
-                  {part}
-                </strong>
-              ) : (
-                part
-              )
-            )}
+            {formatInlineMarkdown(line)}
           </p>
         );
       }
-      // Regular paragraph
-      if (line.trim()) {
-        return <p key={i}>{line}</p>;
-      }
+
       // Empty line = spacing
       return <div key={i} className="h-2" />;
     });
