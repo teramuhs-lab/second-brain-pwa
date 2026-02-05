@@ -42,6 +42,74 @@ function extractYouTubeId(url: string): string | null {
   return null;
 }
 
+// Fetch YouTube video info via oEmbed API
+async function fetchYouTubeInfo(url: string): Promise<{
+  title: string;
+  author: string;
+  thumbnail: string;
+} | null> {
+  try {
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    const response = await fetch(oembedUrl);
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    return {
+      title: data.title || '',
+      author: data.author_name || '',
+      thumbnail: data.thumbnail_url || '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Extract YouTube video description from page's embedded JSON
+async function fetchYouTubeDescription(html: string): Promise<string> {
+  // YouTube embeds video data in ytInitialPlayerResponse or ytInitialData
+  // Look for shortDescription in the page's JSON
+
+  // Try ytInitialPlayerResponse first (most reliable for description)
+  const playerResponseMatch = html.match(/var ytInitialPlayerResponse\s*=\s*(\{.+?\});/s);
+  if (playerResponseMatch) {
+    try {
+      const data = JSON.parse(playerResponseMatch[1]);
+      const description = data?.videoDetails?.shortDescription;
+      if (description) return description;
+    } catch {
+      // Continue to next method
+    }
+  }
+
+  // Try ytInitialData as fallback
+  const initialDataMatch = html.match(/var ytInitialData\s*=\s*(\{.+?\});/s);
+  if (initialDataMatch) {
+    try {
+      const data = JSON.parse(initialDataMatch[1]);
+      // Navigate to description in various possible paths
+      const description =
+        data?.contents?.twoColumnWatchNextResults?.results?.results?.contents?.[1]?.videoSecondaryInfoRenderer?.attributedDescription?.content ||
+        data?.contents?.twoColumnWatchNextResults?.results?.results?.contents?.[1]?.videoSecondaryInfoRenderer?.description?.simpleText;
+      if (description) return description;
+    } catch {
+      // Continue to fallback
+    }
+  }
+
+  // Try finding description in script tags with different pattern
+  const descriptionMatch = html.match(/"shortDescription"\s*:\s*"([^"]+)"/);
+  if (descriptionMatch) {
+    // Unescape the JSON string
+    try {
+      return JSON.parse(`"${descriptionMatch[1]}"`);
+    } catch {
+      return descriptionMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+    }
+  }
+
+  return '';
+}
+
 // Fetch and extract content from URL
 async function extractContent(url: string, urlType: UrlType): Promise<{
   title: string;
@@ -87,18 +155,29 @@ async function extractContent(url: string, urlType: UrlType): Promise<{
 
   // Extract main content based on URL type
   let content = '';
+  let finalTitle = title;
+  let finalAuthor = author;
 
   if (urlType === 'youtube') {
-    // For YouTube, use description and any available transcript info
-    const videoId = extractYouTubeId(url);
-    content = description;
+    // For YouTube, get video info from oEmbed API (most reliable for title/author)
+    const youtubeInfo = await fetchYouTubeInfo(url);
+    if (youtubeInfo) {
+      finalTitle = youtubeInfo.title || title;
+      finalAuthor = youtubeInfo.author || author;
+    }
 
-    // Try to get more info from the page
-    const videoDescription = $('#description-inner').text()
-      || $('meta[property="og:description"]').attr('content')
-      || '';
-    if (videoDescription) {
+    // Extract the actual video description from page's embedded JSON
+    const videoDescription = await fetchYouTubeDescription(html);
+    if (videoDescription && videoDescription.length > 20) {
       content = videoDescription;
+    } else {
+      // Fallback: try meta description (less reliable but better than nothing)
+      content = description || 'No video description available.';
+    }
+
+    // Add context about this being a video
+    if (finalAuthor) {
+      content = `Video by ${finalAuthor}\n\n${content}`;
     }
   } else if (urlType === 'article') {
     // Extract article content
@@ -161,10 +240,10 @@ async function extractContent(url: string, urlType: UrlType): Promise<{
   const readTime = Math.max(1, Math.ceil(wordCount / 200)) + ' min read';
 
   return {
-    title: title.trim(),
+    title: finalTitle.trim(),
     content,
     description: description.trim(),
-    author: author.trim() || undefined,
+    author: finalAuthor.trim() || undefined,
     publishDate: publishDate || undefined,
     readTime,
   };
