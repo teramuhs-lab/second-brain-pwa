@@ -130,6 +130,17 @@ export interface SnoozePreset {
   getDate: () => Date;
 }
 
+// Agent response type
+export interface AgentResponse {
+  status: 'success' | 'error';
+  response: string;
+  session_id?: string;
+  channel?: string;
+  tools_used?: string[];
+  timestamp?: string;
+  error?: string;
+}
+
 export const SNOOZE_PRESETS: SnoozePreset[] = [
   {
     label: 'Later Today',

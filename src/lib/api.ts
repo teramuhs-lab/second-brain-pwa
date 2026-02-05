@@ -1,4 +1,4 @@
-import type { CaptureResponse, UpdateResponse, Category, Entry, SearchResponse } from './types';
+import type { CaptureResponse, UpdateResponse, Category, Entry, SearchResponse, AgentResponse } from './types';
 
 // n8n webhook base URL - configure in environment
 const N8N_BASE_URL = process.env.NEXT_PUBLIC_N8N_URL || 'https://n8n.srv1236227.hstgr.cloud';
@@ -9,6 +9,7 @@ const ENDPOINTS = {
   fix: `${N8N_BASE_URL}/webhook/sb-pwa-fix`,
   update: `${N8N_BASE_URL}/webhook/sb-pwa-update`,
   fetch: `${N8N_BASE_URL}/webhook/sb-pwa-fetch`,
+  agent: `${N8N_BASE_URL}/webhook/sb-agent`,
 };
 
 // Capture a new thought
@@ -182,6 +183,33 @@ export async function searchEntries(
       results: [],
       grouped: { People: 0, Project: 0, Idea: 0, Admin: 0 },
       error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+// Ask the AI Agent (Smart Capture)
+export async function askAgent(
+  message: string,
+  sessionId: string
+): Promise<AgentResponse> {
+  try {
+    const response = await fetch(ENDPOINTS.agent, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, session_id: sessionId }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Agent error:', error);
+    return {
+      status: 'error',
+      response: '',
+      error: error instanceof Error ? error.message : 'Failed to reach agent',
     };
   }
 }
