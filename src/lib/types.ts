@@ -25,6 +25,31 @@ export interface UpdateResponse {
   error?: string;
 }
 
+export interface SearchResult {
+  id: string;
+  title: string;
+  category: Category;
+  status?: string;
+  created: string;
+  lastEdited: string;
+  snippet?: string;
+}
+
+export interface SearchResponse {
+  status: 'success' | 'error';
+  query: string;
+  total: number;
+  summary?: string;
+  results: SearchResult[];
+  grouped: {
+    People: number;
+    Project: number;
+    Idea: number;
+    Admin: number;
+  };
+  error?: string;
+}
+
 // Simplified Entry type from API (n8n returns this format)
 export interface Entry {
   id: string;

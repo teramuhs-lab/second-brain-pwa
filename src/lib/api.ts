@@ -1,4 +1,4 @@
-import type { CaptureResponse, UpdateResponse, Category, Entry } from './types';
+import type { CaptureResponse, UpdateResponse, Category, Entry, SearchResponse } from './types';
 
 // n8n webhook base URL - configure in environment
 const N8N_BASE_URL = process.env.NEXT_PUBLIC_N8N_URL || 'https://n8n.srv1236227.hstgr.cloud';
@@ -154,4 +154,34 @@ export async function snoozeEntry(
 ): Promise<UpdateResponse> {
   const dateField = database === 'people' ? 'next_followup' : 'due_date';
   return updateEntry(pageId, database, { [dateField]: date.toISOString().split('T')[0] });
+}
+
+// Search across all databases
+export async function searchEntries(
+  query: string,
+  summarize: boolean = true
+): Promise<SearchResponse> {
+  try {
+    const response = await fetch('/api/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, summarize }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Search error:', error);
+    return {
+      status: 'error',
+      query,
+      total: 0,
+      results: [],
+      grouped: { People: 0, Project: 0, Idea: 0, Admin: 0 },
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
 }

@@ -26,12 +26,12 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: '/history',
-    label: 'History',
+    href: '/search',
+    label: 'Search',
     icon: (
       <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10" />
-        <polyline points="12 6 12 12 16 14" />
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.3-4.3" />
       </svg>
     ),
   },
