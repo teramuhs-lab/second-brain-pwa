@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import type { Entry } from '@/lib/types';
+import type { Entry, Category } from '@/lib/types';
 
 interface TaskCardProps {
   task: Entry;
@@ -9,7 +9,23 @@ interface TaskCardProps {
   onStatusChange: (taskId: string, newStatus: string) => Promise<void>;
   onComplete: (taskId: string) => Promise<void>;
   onSnooze: (taskId: string, date: Date) => Promise<void>;
+  onRecategorize: (taskId: string, newCategory: Category) => Promise<void>;
 }
+
+const CATEGORY_OPTIONS: { value: Category; label: string; icon: string }[] = [
+  { value: 'People', label: 'People', icon: '👤' },
+  { value: 'Project', label: 'Project', icon: '🚀' },
+  { value: 'Idea', label: 'Idea', icon: '💡' },
+  { value: 'Admin', label: 'Admin', icon: '📋' },
+];
+
+// Map database names to Category type
+const DATABASE_TO_CATEGORY: Record<string, Category> = {
+  admin: 'Admin',
+  projects: 'Project',
+  people: 'People',
+  ideas: 'Idea',
+};
 
 const STATUS_OPTIONS: Record<string, string[]> = {
   admin: ['Todo', 'Done'],
@@ -29,13 +45,17 @@ export function TaskCard({
   onStatusChange,
   onComplete,
   onSnooze,
+  onRecategorize,
 }: TaskCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
   const [showSnooze, setShowSnooze] = useState(false);
+  const [showRecategorize, setShowRecategorize] = useState(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const startX = useRef(0);
   const currentX = useRef(0);
+
+  const currentCategory = DATABASE_TO_CATEGORY[database];
 
   const statusOptions = STATUS_OPTIONS[database] || ['Todo', 'Done'];
   const completedStatus = database === 'projects' ? 'Complete' : database === 'people' ? 'Dormant' : 'Done';
@@ -80,6 +100,17 @@ export function TaskCard({
     const date = new Date();
     date.setDate(date.getDate() + days);
     await onSnooze(task.id, date);
+    setIsLoading(false);
+  };
+
+  const handleRecategorize = async (newCategory: Category) => {
+    if (newCategory === currentCategory) {
+      setShowRecategorize(false);
+      return;
+    }
+    setIsLoading(true);
+    setShowRecategorize(false);
+    await onRecategorize(task.id, newCategory);
     setIsLoading(false);
   };
 
@@ -180,16 +211,31 @@ export function TaskCard({
             </div>
           </div>
 
-          {/* Right side - snooze button */}
-          <button
-            onClick={() => setShowSnooze(!showSnooze)}
-            className="shrink-0 rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
-          >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 6v6l4 2" />
-            </svg>
-          </button>
+          {/* Right side - action buttons */}
+          <div className="flex shrink-0 gap-1">
+            {/* Recategorize button */}
+            <button
+              onClick={() => setShowRecategorize(!showRecategorize)}
+              className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+              title="Move to different category"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M12 11v6M9 14h6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {/* Snooze button */}
+            <button
+              onClick={() => setShowSnooze(!showSnooze)}
+              className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+              title="Snooze"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6v6l4 2" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Status picker dropdown */}
@@ -228,6 +274,30 @@ export function TaskCard({
                 {option.label}
               </button>
             ))}
+          </div>
+        )}
+
+        {/* Recategorize picker dropdown */}
+        {showRecategorize && (
+          <div className="mt-3 border-t border-[var(--border-subtle)] pt-3">
+            <p className="mb-2 text-xs text-[var(--text-muted)]">Move to:</p>
+            <div className="flex flex-wrap gap-2">
+              {CATEGORY_OPTIONS.map((cat) => (
+                <button
+                  key={cat.value}
+                  onClick={() => handleRecategorize(cat.value)}
+                  disabled={cat.value === currentCategory}
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                    cat.value === currentCategory
+                      ? 'bg-[var(--accent-cyan)] text-[var(--bg-deep)] cursor-default'
+                      : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
+                  }`}
+                >
+                  <span>{cat.icon}</span>
+                  <span>{cat.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>

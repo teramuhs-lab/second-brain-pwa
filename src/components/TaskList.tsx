@@ -2,8 +2,16 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { TaskCard } from './TaskCard';
-import { fetchEntries, markDone, snoozeEntry, updateEntry } from '@/lib/api';
-import type { Entry } from '@/lib/types';
+import { fetchEntries, markDone, snoozeEntry, updateEntry, recategorize } from '@/lib/api';
+import type { Entry, Category } from '@/lib/types';
+
+// Map database names to Category type
+const DATABASE_TO_CATEGORY: Record<string, Category> = {
+  admin: 'Admin',
+  projects: 'Project',
+  people: 'People',
+  ideas: 'Idea',
+};
 
 type TabType = 'admin' | 'projects' | 'people';
 
@@ -55,6 +63,15 @@ export function TaskList() {
 
   const handleSnooze = async (taskId: string, date: Date) => {
     await snoozeEntry(taskId, activeTab, date);
+    await loadTasks();
+  };
+
+  const handleRecategorize = async (taskId: string, newCategory: Category) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+
+    const currentCategory = DATABASE_TO_CATEGORY[activeTab];
+    await recategorize(taskId, currentCategory, newCategory, task.title);
     await loadTasks();
   };
 
@@ -139,6 +156,7 @@ export function TaskList() {
               onStatusChange={handleStatusChange}
               onComplete={handleComplete}
               onSnooze={handleSnooze}
+              onRecategorize={handleRecategorize}
             />
           ))}
         </div>
