@@ -8,6 +8,9 @@ const DATABASE_IDS: Record<string, string> = {
   Admin: '2f092129-b3db-8171-ae6c-f98e8124574c',
 };
 
+// Inbox Log database ID
+const INBOX_LOG_DB_ID = '2f092129-b3db-8104-a9ca-fc123e5be4a3';
+
 // Default status for each category
 const DEFAULT_STATUS: Record<string, string> = {
   People: 'New',
@@ -115,6 +118,33 @@ export async function POST(request: NextRequest) {
       parent: { database_id: targetDbId },
       properties,
     });
+
+    // Step 3: Log to Inbox Log database
+    try {
+      await notionRequest('/pages', 'POST', {
+        parent: { database_id: INBOX_LOG_DB_ID },
+        properties: {
+          'Raw Input': {
+            title: [{ text: { content: raw_text } }],
+          },
+          'Category': {
+            select: { name: new_category },
+          },
+          'Confidence': {
+            number: 1.0, // User explicitly chose this category
+          },
+          'Destination ID': {
+            rich_text: [{ text: { content: newPage.id } }],
+          },
+          'Status': {
+            select: { name: 'Fixed' },
+          },
+        },
+      });
+    } catch (logError) {
+      // Log error but don't fail the request - the recategorization succeeded
+      console.error('Failed to log to Inbox Log:', logError);
+    }
 
     return NextResponse.json({
       status: 'fixed',
