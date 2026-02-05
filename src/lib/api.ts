@@ -322,15 +322,20 @@ export function extractUrl(text: string): string | null {
   return match ? match[0] : null;
 }
 
-// Send URL summary to Slack
+// Send URL summary to Slack (supports rich summary format)
 export async function sendSlackNotification(data: {
   title: string;
   url: string;
   one_liner: string;
-  full_summary: string;
-  key_points: string[];
   category: string;
   readTime?: string;
+  // Rich summary fields (optional for backward compatibility)
+  tldr?: string;
+  key_takeaways?: string[];
+  action_items?: string[];
+  // Legacy fields
+  full_summary?: string;
+  key_points?: string[];
 }): Promise<{ status: 'sent' | 'error'; error?: string }> {
   try {
     const response = await fetch('/api/send-slack', {

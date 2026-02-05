@@ -7,10 +7,15 @@ interface SlackMessageRequest {
   title: string;
   url: string;
   one_liner: string;
-  full_summary: string;
-  key_points: string[];
   category: string;
   readTime?: string;
+  // Rich summary fields
+  tldr?: string;
+  key_takeaways?: string[];
+  action_items?: string[];
+  // Legacy fields
+  full_summary?: string;
+  key_points?: string[];
 }
 
 export async function POST(request: NextRequest) {
@@ -23,7 +28,18 @@ export async function POST(request: NextRequest) {
     }
 
     const body: SlackMessageRequest = await request.json();
-    const { title, url, one_liner, full_summary, key_points, category, readTime } = body;
+    const {
+      title,
+      url,
+      one_liner,
+      category,
+      readTime,
+      tldr,
+      key_takeaways,
+      action_items,
+      full_summary,
+      key_points
+    } = body;
 
     // Extract hostname for display
     let hostname = url;
@@ -33,16 +49,26 @@ export async function POST(request: NextRequest) {
       // Use full URL if parsing fails
     }
 
-    // Build key points text
-    const keyPointsText = key_points.length > 0
-      ? key_points.map(p => `• ${p}`).join('\n')
-      : 'No key points extracted';
-
     // Build metadata line
     const metaLine = [hostname, category, readTime].filter(Boolean).join(' • ');
 
-    // Create Slack Block Kit message
-    const blocks = [
+    // Use rich summary or fall back to legacy
+    const summaryText = tldr || full_summary || one_liner;
+    const takeaways = key_takeaways || key_points || [];
+    const actions = action_items || [];
+
+    // Build key takeaways text
+    const takeawaysText = takeaways.length > 0
+      ? takeaways.slice(0, 5).map(p => `• ${p}`).join('\n')
+      : '';
+
+    // Build action items text
+    const actionsText = actions.length > 0
+      ? actions.slice(0, 3).map(a => `☐ ${a}`).join('\n')
+      : '';
+
+    // Create Slack Block Kit message with rich content
+    const blocks: object[] = [
       {
         type: 'header',
         text: {
@@ -68,20 +94,43 @@ export async function POST(request: NextRequest) {
       {
         type: 'divider',
       },
-      {
+    ];
+
+    // TL;DR Section
+    if (summaryText) {
+      blocks.push({
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*Summary*\n${full_summary.slice(0, 1500)}${full_summary.length > 1500 ? '...' : ''}`,
+          text: `*TL;DR*\n${summaryText.slice(0, 1500)}${summaryText.length > 1500 ? '...' : ''}`,
         },
-      },
-      {
+      });
+    }
+
+    // Key Takeaways Section
+    if (takeawaysText) {
+      blocks.push({
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*Key Points*\n${keyPointsText}`,
+          text: `*Key Takeaways*\n${takeawaysText}`,
         },
-      },
+      });
+    }
+
+    // Action Items Section
+    if (actionsText) {
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `*Action Items*\n${actionsText}`,
+        },
+      });
+    }
+
+    // Add divider and buttons
+    blocks.push(
       {
         type: 'divider',
       },
@@ -92,25 +141,26 @@ export async function POST(request: NextRequest) {
             type: 'button',
             text: {
               type: 'plain_text',
-              text: 'Open Article',
+              text: '📖 Read Article',
               emoji: true,
             },
             url: url,
             action_id: 'open_article',
+            style: 'primary',
           },
           {
             type: 'button',
             text: {
               type: 'plain_text',
-              text: 'View in App',
+              text: '🧠 View in App',
               emoji: true,
             },
-            url: process.env.NEXT_PUBLIC_APP_URL || 'https://second-brain.vercel.app/reading',
+            url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://second-brain.vercel.app'}/reading`,
             action_id: 'view_in_app',
           },
         ],
-      },
-    ];
+      }
+    );
 
     // Send to Slack
     const response = await fetch('https://slack.com/api/chat.postMessage', {

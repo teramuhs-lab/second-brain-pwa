@@ -83,10 +83,12 @@ export default function CapturePage() {
       title: urlResult.title,
       url: urlResult.url,
       one_liner: urlResult.one_liner,
-      full_summary: urlResult.full_summary,
-      key_points: urlResult.key_points,
       category: urlResult.category,
       readTime: urlResult.readTime,
+      // Rich summary fields
+      tldr: urlResult.tldr,
+      key_takeaways: urlResult.key_takeaways,
+      action_items: urlResult.action_items,
     });
   }, [urlResult]);
 

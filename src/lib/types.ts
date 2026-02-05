@@ -193,20 +193,39 @@ export type DigestResponse = DailyDigestResponse | WeeklyDigestResponse;
 
 // URL Processing types
 export type UrlType = 'youtube' | 'twitter' | 'article' | 'generic';
+export type Complexity = 'Beginner' | 'Intermediate' | 'Advanced';
 
+// Main idea structure for rich summaries
+export interface MainIdea {
+  title: string;
+  explanation: string;
+}
+
+// Rich summary result (Recall AI style)
 export interface UrlProcessResult {
   status: 'success' | 'error';
   url: string;
   urlType: UrlType;
   title: string;
-  one_liner: string;
-  full_summary: string;
-  key_points: string[];
-  category: string;
-  readTime?: string;
   author?: string;
+  readTime?: string;
   page_id?: string;
   error?: string;
+  // Rich summary fields
+  one_liner: string;
+  tldr?: string;
+  main_ideas?: MainIdea[];
+  key_takeaways?: string[];
+  notable_quotes?: string[];
+  action_items?: string[];
+  questions_to_consider?: string[];
+  related_topics?: string[];
+  category: string;
+  complexity?: Complexity;
+  content_type?: string;
+  // Legacy fields for backwards compatibility
+  full_summary?: string;
+  key_points?: string[];
 }
 
 // Reading page - Idea with source

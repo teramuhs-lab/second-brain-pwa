@@ -255,64 +255,105 @@ async function extractContent(url: string, urlType: UrlType): Promise<{
   };
 }
 
-// Generate comprehensive summary with OpenAI
+// Rich summary structure like Recall AI
+interface RichSummary {
+  one_liner: string;
+  tldr: string;
+  main_ideas: Array<{
+    title: string;
+    explanation: string;
+  }>;
+  key_takeaways: string[];
+  notable_quotes: string[];
+  action_items: string[];
+  questions_to_consider: string[];
+  related_topics: string[];
+  category: string;
+  complexity: 'Beginner' | 'Intermediate' | 'Advanced';
+  content_type: string;
+}
+
+// Generate comprehensive summary with OpenAI (Recall AI style)
 async function generateSummary(
   title: string,
   content: string,
   urlType: UrlType
-): Promise<{
-  one_liner: string;
-  full_summary: string;
-  key_points: string[];
-  category: string;
-}> {
+): Promise<RichSummary> {
+  const defaultSummary: RichSummary = {
+    one_liner: 'AI summary unavailable',
+    tldr: content.slice(0, 300),
+    main_ideas: [],
+    key_takeaways: [],
+    notable_quotes: [],
+    action_items: [],
+    questions_to_consider: [],
+    related_topics: [],
+    category: 'Tech',
+    complexity: 'Intermediate',
+    content_type: urlType === 'youtube' ? 'Video' : 'Article',
+  };
+
   if (!OPENAI_API_KEY) {
-    return {
-      one_liner: 'AI summary unavailable',
-      full_summary: content.slice(0, 500),
-      key_points: [],
-      category: 'Tech',
-    };
+    return defaultSummary;
   }
 
   const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-
   const contentType = urlType === 'youtube' ? 'video' : 'article';
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     temperature: 0.3,
+    max_tokens: 2500,
     messages: [
       {
         role: 'system',
-        content: `You are a knowledge curator creating comprehensive summaries for a personal Second Brain system.`
+        content: `You are an expert knowledge curator creating detailed, Recall AI-style summaries for a personal Second Brain system. Your summaries should be comprehensive, actionable, and help the user truly understand and retain the content. Extract maximum value from the source material.`
       },
       {
         role: 'user',
-        content: `Create a detailed summary of this ${contentType} for a personal knowledge base.
+        content: `Create an extremely detailed summary of this ${contentType} for a personal knowledge base. Extract every valuable insight.
 
 TITLE: ${title}
 
 CONTENT:
 ${content}
 
-Provide a comprehensive analysis including:
-1. A one-liner hook (1 sentence that captures the essence)
-2. A full summary (300-500 words) with:
-   - Main thesis/topic
-   - Key arguments or points explained
-   - Notable quotes or statistics
-   - Actionable takeaways
-   - Why this matters
-3. 3-5 key bullet points
-4. Category: Business, Tech, Life, or Creative
+Generate a comprehensive analysis with ALL of the following sections:
 
-Output STRICT JSON:
+1. **one_liner**: A compelling 1-sentence hook that captures the core insight (make it memorable)
+
+2. **tldr**: A 3-4 sentence executive summary covering the main thesis, why it matters, and the key conclusion
+
+3. **main_ideas**: 3-5 main concepts/ideas, each with:
+   - "title": Short descriptive title (3-6 words)
+   - "explanation": 2-3 sentence deep explanation of this idea
+
+4. **key_takeaways**: 5-7 specific, actionable bullet points the reader should remember. Be specific, not generic.
+
+5. **notable_quotes**: 2-4 direct quotes or paraphrased key statements from the content (include the most impactful/memorable lines)
+
+6. **action_items**: 3-5 specific actions the reader could take based on this content. Make them concrete and implementable.
+
+7. **questions_to_consider**: 2-3 thought-provoking questions for further reflection or research
+
+8. **related_topics**: 4-6 related concepts, tools, or topics to explore further
+
+9. **category**: One of: Business, Tech, Life, Creative
+
+10. **complexity**: One of: Beginner, Intermediate, Advanced (based on content depth)
+
+Output STRICT JSON (no markdown, just raw JSON):
 {
   "one_liner": "...",
-  "full_summary": "...",
-  "key_points": ["...", "...", "..."],
-  "category": "Tech"
+  "tldr": "...",
+  "main_ideas": [{"title": "...", "explanation": "..."}, ...],
+  "key_takeaways": ["...", "...", ...],
+  "notable_quotes": ["...", ...],
+  "action_items": ["...", ...],
+  "questions_to_consider": ["...", ...],
+  "related_topics": ["...", ...],
+  "category": "Tech",
+  "complexity": "Intermediate"
 }`
       }
     ],
@@ -322,45 +363,82 @@ Output STRICT JSON:
 
   // Parse JSON from response
   try {
-    // Extract JSON from response (handle markdown code blocks)
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       return {
-        one_liner: parsed.one_liner || 'No summary available',
-        full_summary: parsed.full_summary || content.slice(0, 500),
-        key_points: parsed.key_points || [],
+        one_liner: parsed.one_liner || defaultSummary.one_liner,
+        tldr: parsed.tldr || defaultSummary.tldr,
+        main_ideas: parsed.main_ideas || [],
+        key_takeaways: parsed.key_takeaways || [],
+        notable_quotes: parsed.notable_quotes || [],
+        action_items: parsed.action_items || [],
+        questions_to_consider: parsed.questions_to_consider || [],
+        related_topics: parsed.related_topics || [],
         category: parsed.category || 'Tech',
+        complexity: parsed.complexity || 'Intermediate',
+        content_type: contentType === 'video' ? 'Video' : 'Article',
       };
     }
   } catch (e) {
     console.error('Failed to parse AI response:', e);
   }
 
-  return {
-    one_liner: 'Summary generation failed',
-    full_summary: content.slice(0, 500),
-    key_points: [],
-    category: 'Tech',
-  };
+  return defaultSummary;
 }
 
-// Create Notion page in Ideas database
+// Create Notion page in Ideas database with rich summary
 async function createNotionIdea(data: {
   title: string;
   url: string;
-  one_liner: string;
-  full_summary: string;
-  key_points: string[];
-  category: string;
+  summary: RichSummary;
 }): Promise<string | null> {
   if (!NOTION_API_KEY) {
     console.error('NOTION_API_KEY not configured');
     return null;
   }
 
-  // Format the full content with key points
-  const rawInsight = `## Summary\n\n${data.full_summary}\n\n## Key Points\n\n${data.key_points.map(p => `- ${p}`).join('\n')}\n\n---\n*Source: ${data.url}*`;
+  // Format the rich summary as markdown for Notion
+  const sections: string[] = [];
+
+  // TL;DR
+  sections.push(`## TL;DR\n${data.summary.tldr}`);
+
+  // Main Ideas
+  if (data.summary.main_ideas.length > 0) {
+    sections.push(`## Main Ideas\n${data.summary.main_ideas.map(idea =>
+      `### ${idea.title}\n${idea.explanation}`
+    ).join('\n\n')}`);
+  }
+
+  // Key Takeaways
+  if (data.summary.key_takeaways.length > 0) {
+    sections.push(`## Key Takeaways\n${data.summary.key_takeaways.map(t => `- ${t}`).join('\n')}`);
+  }
+
+  // Notable Quotes
+  if (data.summary.notable_quotes.length > 0) {
+    sections.push(`## Notable Quotes\n${data.summary.notable_quotes.map(q => `> "${q}"`).join('\n\n')}`);
+  }
+
+  // Action Items
+  if (data.summary.action_items.length > 0) {
+    sections.push(`## Action Items\n${data.summary.action_items.map(a => `- [ ] ${a}`).join('\n')}`);
+  }
+
+  // Questions to Consider
+  if (data.summary.questions_to_consider.length > 0) {
+    sections.push(`## Questions to Consider\n${data.summary.questions_to_consider.map(q => `- ${q}`).join('\n')}`);
+  }
+
+  // Related Topics
+  if (data.summary.related_topics.length > 0) {
+    sections.push(`## Related Topics\n${data.summary.related_topics.map(t => `\`${t}\``).join(' • ')}`);
+  }
+
+  sections.push(`---\n*Source: ${data.url}*\n*Complexity: ${data.summary.complexity}*`);
+
+  const rawInsight = sections.join('\n\n');
 
   const response = await fetch('https://api.notion.com/v1/pages', {
     method: 'POST',
@@ -376,7 +454,7 @@ async function createNotionIdea(data: {
           title: [{ text: { content: data.title.slice(0, 100) } }],
         },
         'One-liner': {
-          rich_text: [{ text: { content: data.one_liner.slice(0, 200) } }],
+          rich_text: [{ text: { content: data.summary.one_liner.slice(0, 200) } }],
         },
         'Raw Insight': {
           rich_text: [{ text: { content: rawInsight.slice(0, 2000) } }],
@@ -385,7 +463,7 @@ async function createNotionIdea(data: {
           url: data.url,
         },
         Category: {
-          select: { name: data.category },
+          select: { name: data.summary.category },
         },
         Maturity: {
           select: { name: 'Spark' },
@@ -445,29 +523,34 @@ export async function POST(request: NextRequest) {
       urlType
     );
 
-    // Create Notion page
+    // Create Notion page with rich summary
     const pageId = await createNotionIdea({
       title: extracted.title,
       url: url,
-      one_liner: summary.one_liner,
-      full_summary: summary.full_summary,
-      key_points: summary.key_points,
-      category: summary.category,
+      summary: summary,
     });
 
-    // Return result
+    // Return rich result (Recall AI style)
     return NextResponse.json({
       status: 'success',
       url,
       urlType,
       title: extracted.title,
-      one_liner: summary.one_liner,
-      full_summary: summary.full_summary,
-      key_points: summary.key_points,
-      category: summary.category,
-      readTime: extracted.readTime,
       author: extracted.author,
+      readTime: extracted.readTime,
       page_id: pageId,
+      // Rich summary fields
+      one_liner: summary.one_liner,
+      tldr: summary.tldr,
+      main_ideas: summary.main_ideas,
+      key_takeaways: summary.key_takeaways,
+      notable_quotes: summary.notable_quotes,
+      action_items: summary.action_items,
+      questions_to_consider: summary.questions_to_consider,
+      related_topics: summary.related_topics,
+      category: summary.category,
+      complexity: summary.complexity,
+      content_type: summary.content_type,
     });
 
   } catch (error) {
