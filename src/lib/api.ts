@@ -34,7 +34,7 @@ export async function captureThought(text: string): Promise<CaptureResponse> {
   }
 }
 
-// Recategorize an entry
+// Recategorize an entry (uses local API route that talks directly to Notion)
 export async function recategorize(
   pageId: string,
   currentCategory: Category,
@@ -42,7 +42,8 @@ export async function recategorize(
   rawText: string
 ): Promise<CaptureResponse> {
   try {
-    const response = await fetch(ENDPOINTS.fix, {
+    // Use local API route instead of n8n webhook
+    const response = await fetch('/api/recategorize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -50,7 +51,6 @@ export async function recategorize(
         current_category: currentCategory,
         new_category: newCategory,
         raw_text: rawText,
-        source: 'pwa',
       }),
     });
 
@@ -58,7 +58,14 @@ export async function recategorize(
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    return await response.json();
+    const result = await response.json();
+    // Map the response to CaptureResponse format
+    return {
+      status: result.status === 'fixed' ? 'captured' : 'error',
+      category: newCategory,
+      page_id: result.page_id,
+      error: result.error,
+    };
   } catch (error) {
     console.error('Recategorize error:', error);
     return {
