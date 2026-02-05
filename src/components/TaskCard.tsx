@@ -50,6 +50,7 @@ export function TaskCard({
   const [isLoading, setIsLoading] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
   const [showSnooze, setShowSnooze] = useState(false);
+  const [showCustomDate, setShowCustomDate] = useState(false);
   const [showRecategorize, setShowRecategorize] = useState(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const startX = useRef(0);
@@ -97,8 +98,18 @@ export function TaskCard({
   const handleSnooze = async (days: number) => {
     setIsLoading(true);
     setShowSnooze(false);
+    setShowCustomDate(false);
     const date = new Date();
     date.setDate(date.getDate() + days);
+    await onSnooze(task.id, date);
+    setIsLoading(false);
+  };
+
+  const handleCustomDateSnooze = async (dateStr: string) => {
+    setIsLoading(true);
+    setShowSnooze(false);
+    setShowCustomDate(false);
+    const date = new Date(dateStr + 'T09:00:00');
     await onSnooze(task.id, date);
     setIsLoading(false);
   };
@@ -259,21 +270,48 @@ export function TaskCard({
 
         {/* Snooze picker dropdown */}
         {showSnooze && (
-          <div className="mt-3 flex flex-wrap gap-2 border-t border-[var(--border-subtle)] pt-3">
-            {[
-              { label: 'Tomorrow', days: 1 },
-              { label: 'This Weekend', days: new Date().getDay() === 0 ? 6 : 6 - new Date().getDay() },
-              { label: 'Next Week', days: 7 },
-              { label: 'Next Month', days: 30 },
-            ].map((option) => (
+          <div className="mt-3 border-t border-[var(--border-subtle)] pt-3">
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: 'Tomorrow', days: 1 },
+                { label: 'This Weekend', days: new Date().getDay() === 0 ? 6 : 6 - new Date().getDay() },
+                { label: 'Next Week', days: 7 },
+                { label: 'Next Month', days: 30 },
+              ].map((option) => (
+                <button
+                  key={option.label}
+                  onClick={() => handleSnooze(option.days)}
+                  className="rounded-lg bg-[var(--bg-elevated)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface)]"
+                >
+                  {option.label}
+                </button>
+              ))}
               <button
-                key={option.label}
-                onClick={() => handleSnooze(option.days)}
-                className="rounded-lg bg-[var(--bg-elevated)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface)]"
+                onClick={() => setShowCustomDate(!showCustomDate)}
+                className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
+                  showCustomDate
+                    ? 'bg-[var(--accent-cyan)] text-[var(--bg-deep)]'
+                    : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
+                }`}
               >
-                {option.label}
+                Pick Date
               </button>
-            ))}
+            </div>
+            {/* Custom date picker */}
+            {showCustomDate && (
+              <div className="mt-3 flex items-center gap-2">
+                <input
+                  type="date"
+                  min={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleCustomDateSnooze(e.target.value);
+                    }
+                  }}
+                  className="flex-1 rounded-lg bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent-cyan)]"
+                />
+              </div>
+            )}
           </div>
         )}
 
