@@ -1,4 +1,4 @@
-import type { CaptureResponse, UpdateResponse, Category, Entry, SearchResponse, AgentResponse } from './types';
+import type { CaptureResponse, UpdateResponse, Category, Entry, SearchResponse, AgentResponse, DigestResponse, DailyDigestResponse, WeeklyDigestResponse } from './types';
 
 // n8n webhook base URL - configure in environment
 const N8N_BASE_URL = process.env.NEXT_PUBLIC_N8N_URL || 'https://n8n.srv1236227.hstgr.cloud';
@@ -211,5 +211,47 @@ export async function askAgent(
       response: '',
       error: error instanceof Error ? error.message : 'Failed to reach agent',
     };
+  }
+}
+
+// Fetch digest (daily or weekly)
+export async function fetchDigest(type: 'daily'): Promise<DailyDigestResponse>;
+export async function fetchDigest(type: 'weekly'): Promise<WeeklyDigestResponse>;
+export async function fetchDigest(type: 'daily' | 'weekly'): Promise<DigestResponse> {
+  try {
+    const response = await fetch(`/api/digest?type=${type}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Digest error:', error);
+    const baseError = {
+      status: 'error' as const,
+      generatedAt: new Date().toISOString(),
+      aiSummary: '',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+
+    if (type === 'daily') {
+      return {
+        ...baseError,
+        type: 'daily',
+        data: { projects: [], tasks: [], followups: [] },
+        counts: { projects: 0, tasks: 0, followups: 0 },
+      };
+    } else {
+      return {
+        ...baseError,
+        type: 'weekly',
+        data: { completedTasks: [], completedProjects: [], inboxByCategory: {} },
+        counts: { completedTasks: 0, completedProjects: 0, totalInbox: 0 },
+      };
+    }
   }
 }

@@ -141,6 +141,56 @@ export interface AgentResponse {
   error?: string;
 }
 
+// Digest types
+export interface DigestItem {
+  id: string;
+  title: string;
+  status?: string;
+  priority?: string;
+  dueDate?: string;
+  nextAction?: string;
+  company?: string;
+  category?: string;
+}
+
+export interface DailyDigestResponse {
+  status: 'success' | 'error';
+  type: 'daily';
+  generatedAt: string;
+  data: {
+    projects: DigestItem[];
+    tasks: DigestItem[];
+    followups: DigestItem[];
+  };
+  counts: {
+    projects: number;
+    tasks: number;
+    followups: number;
+  };
+  aiSummary: string;
+  error?: string;
+}
+
+export interface WeeklyDigestResponse {
+  status: 'success' | 'error';
+  type: 'weekly';
+  generatedAt: string;
+  data: {
+    completedTasks: DigestItem[];
+    completedProjects: DigestItem[];
+    inboxByCategory: Record<string, DigestItem[]>;
+  };
+  counts: {
+    completedTasks: number;
+    completedProjects: number;
+    totalInbox: number;
+  };
+  aiSummary: string;
+  error?: string;
+}
+
+export type DigestResponse = DailyDigestResponse | WeeklyDigestResponse;
+
 export const SNOOZE_PRESETS: SnoozePreset[] = [
   {
     label: 'Later Today',
