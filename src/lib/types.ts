@@ -191,6 +191,37 @@ export interface WeeklyDigestResponse {
 
 export type DigestResponse = DailyDigestResponse | WeeklyDigestResponse;
 
+// URL Processing types
+export type UrlType = 'youtube' | 'twitter' | 'article' | 'generic';
+
+export interface UrlProcessResult {
+  status: 'success' | 'error';
+  url: string;
+  urlType: UrlType;
+  title: string;
+  one_liner: string;
+  full_summary: string;
+  key_points: string[];
+  category: string;
+  readTime?: string;
+  author?: string;
+  page_id?: string;
+  error?: string;
+}
+
+// Reading page - Idea with source
+export interface ReadingItem {
+  id: string;
+  title: string;
+  one_liner: string;
+  raw_insight: string;
+  source: string;
+  category: string;
+  maturity: string;
+  created_time: string;
+  last_edited_time: string;
+}
+
 export const SNOOZE_PRESETS: SnoozePreset[] = [
   {
     label: 'Later Today',

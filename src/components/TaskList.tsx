@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { TaskCard } from './TaskCard';
-import { fetchEntries, markDone, snoozeEntry, updateEntry, recategorize } from '@/lib/api';
+import { fetchEntries, markDone, snoozeEntry, updateEntry, recategorize, deleteEntry } from '@/lib/api';
 import type { Entry, Category } from '@/lib/types';
 
 // Map database names to Category type
@@ -72,6 +72,11 @@ export function TaskList() {
 
     const currentCategory = DATABASE_TO_CATEGORY[activeTab];
     await recategorize(taskId, currentCategory, newCategory, task.title);
+    await loadTasks();
+  };
+
+  const handleDelete = async (taskId: string) => {
+    await deleteEntry(taskId);
     await loadTasks();
   };
 
@@ -157,6 +162,7 @@ export function TaskList() {
               onComplete={handleComplete}
               onSnooze={handleSnooze}
               onRecategorize={handleRecategorize}
+              onDelete={handleDelete}
             />
           ))}
         </div>

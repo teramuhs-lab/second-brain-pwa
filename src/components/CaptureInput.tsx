@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef, KeyboardEvent } from 'react';
 
 interface CaptureInputProps {
   onSubmit: (text: string) => Promise<void>;
+  onUrlSubmit?: (url: string) => Promise<void>;
   isLoading?: boolean;
   placeholder?: string;
 }
@@ -52,8 +53,12 @@ declare global {
   }
 }
 
+// URL detection regex
+const URL_REGEX = /https?:\/\/[^\s]+/;
+
 export function CaptureInput({
   onSubmit,
+  onUrlSubmit,
   isLoading = false,
   placeholder = "What's on your mind?",
 }: CaptureInputProps) {
@@ -61,7 +66,13 @@ export function CaptureInput({
   const [isFocused, setIsFocused] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
+  const [hasUrl, setHasUrl] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  // Detect URLs in text
+  useEffect(() => {
+    setHasUrl(URL_REGEX.test(text));
+  }, [text]);
 
   // Check for speech recognition support
   useEffect(() => {
@@ -73,9 +84,17 @@ export function CaptureInput({
     const trimmed = text.trim();
     if (!trimmed || isLoading) return;
 
-    await onSubmit(trimmed);
+    // Check if input contains a URL
+    const urlMatch = trimmed.match(URL_REGEX);
+    if (urlMatch && onUrlSubmit) {
+      // Extract the URL and process it
+      await onUrlSubmit(urlMatch[0]);
+    } else {
+      // Normal text capture
+      await onSubmit(trimmed);
+    }
     setText('');
-  }, [text, isLoading, onSubmit]);
+  }, [text, isLoading, onSubmit, onUrlSubmit]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -145,22 +164,28 @@ export function CaptureInput({
     }
   }, [isListening, startListening, stopListening]);
 
-  const dynamicPlaceholder = isListening ? 'Listening...' : placeholder;
+  const dynamicPlaceholder = isListening
+    ? 'Listening...'
+    : hasUrl
+      ? 'Link detected! Press send to analyze...'
+      : placeholder;
 
   return (
     <div className="relative">
-      {/* Animated border glow when focused or listening */}
+      {/* Animated border glow when focused, listening, or URL detected */}
       <div
         className={`absolute -inset-[1px] rounded-2xl bg-gradient-to-r opacity-0 blur-sm transition-opacity duration-500 ${
           isListening
             ? 'from-[var(--accent-red)] via-[var(--accent-purple)] to-[var(--accent-red)] opacity-80'
-            : isFocused
-              ? 'from-[var(--accent-cyan)] via-[var(--accent-purple)] to-[var(--accent-cyan)] opacity-60'
-              : ''
+            : hasUrl
+              ? 'from-[#10b981] via-[#059669] to-[#10b981] opacity-70'
+              : isFocused
+                ? 'from-[var(--accent-cyan)] via-[var(--accent-purple)] to-[var(--accent-cyan)] opacity-60'
+                : ''
         }`}
         style={{
           backgroundSize: '200% 100%',
-          animation: isFocused || isListening ? 'border-flow 3s linear infinite' : 'none',
+          animation: isFocused || isListening || hasUrl ? 'border-flow 3s linear infinite' : 'none',
         }}
       />
 
@@ -211,12 +236,21 @@ export function CaptureInput({
           <button
             onClick={handleSubmit}
             disabled={!text.trim() || isLoading}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--accent-cyan)] to-[#00a8cc] text-[var(--bg-deep)] shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-[0_0_20px_rgba(0,212,255,0.4)] active:scale-95 disabled:opacity-30 disabled:hover:scale-100 disabled:hover:shadow-lg"
-            aria-label="Send"
-            title="Capture thought"
+            className={`flex h-10 w-10 items-center justify-center rounded-xl shadow-lg transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-30 disabled:hover:scale-100 disabled:hover:shadow-lg ${
+              hasUrl
+                ? 'bg-gradient-to-br from-[#10b981] to-[#059669] text-white hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]'
+                : 'bg-gradient-to-br from-[var(--accent-cyan)] to-[#00a8cc] text-[var(--bg-deep)] hover:shadow-[0_0_20px_rgba(0,212,255,0.4)]'
+            }`}
+            aria-label={hasUrl ? 'Analyze link' : 'Send'}
+            title={hasUrl ? 'Analyze link' : 'Capture thought'}
           >
             {isLoading ? (
               <div className="spinner" />
+            ) : hasUrl ? (
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
             ) : (
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M22 2L11 13" />

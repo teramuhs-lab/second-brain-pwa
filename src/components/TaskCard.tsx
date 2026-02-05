@@ -10,6 +10,7 @@ interface TaskCardProps {
   onComplete: (taskId: string) => Promise<void>;
   onSnooze: (taskId: string, date: Date) => Promise<void>;
   onRecategorize: (taskId: string, newCategory: Category) => Promise<void>;
+  onDelete: (taskId: string) => Promise<void>;
 }
 
 const CATEGORY_OPTIONS: { value: Category; label: string; icon: string }[] = [
@@ -46,12 +47,14 @@ export function TaskCard({
   onComplete,
   onSnooze,
   onRecategorize,
+  onDelete,
 }: TaskCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
   const [showSnooze, setShowSnooze] = useState(false);
   const [showCustomDate, setShowCustomDate] = useState(false);
   const [showRecategorize, setShowRecategorize] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const startX = useRef(0);
   const currentX = useRef(0);
@@ -122,6 +125,13 @@ export function TaskCard({
     setIsLoading(true);
     setShowRecategorize(false);
     await onRecategorize(task.id, newCategory);
+    setIsLoading(false);
+  };
+
+  const handleDelete = async () => {
+    setIsLoading(true);
+    setShowDeleteConfirm(false);
+    await onDelete(task.id);
     setIsLoading(false);
   };
 
@@ -246,6 +256,17 @@ export function TaskCard({
                 <path d="M12 6v6l4 2" />
               </svg>
             </button>
+            {/* Delete button */}
+            <button
+              onClick={() => setShowDeleteConfirm(!showDeleteConfirm)}
+              className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[rgba(239,68,68,0.1)] hover:text-[#ef4444]"
+              title="Delete"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M10 11v6M14 11v6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -335,6 +356,27 @@ export function TaskCard({
                   <span>{cat.label}</span>
                 </button>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Delete confirmation */}
+        {showDeleteConfirm && (
+          <div className="mt-3 border-t border-[var(--border-subtle)] pt-3">
+            <p className="mb-2 text-xs text-[#ef4444]">Delete this item? This cannot be undone.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleDelete}
+                className="flex-1 rounded-lg bg-[#ef4444] px-3 py-1.5 text-xs font-medium text-white transition-all hover:bg-[#dc2626]"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 rounded-lg bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-all hover:bg-[var(--bg-surface)]"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         )}

@@ -3,12 +3,14 @@
 import { useState, useCallback } from 'react';
 import { CaptureInput } from '@/components/CaptureInput';
 import { ConfirmCard } from '@/components/ConfirmCard';
-import { captureThought, recategorize } from '@/lib/api';
-import type { Category, ConfirmationState } from '@/lib/types';
+import { LinkSummaryCard } from '@/components/LinkSummaryCard';
+import { captureThought, recategorize, processUrl, sendSlackNotification } from '@/lib/api';
+import type { Category, ConfirmationState, UrlProcessResult } from '@/lib/types';
 
 export default function CapturePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [confirmation, setConfirmation] = useState<ConfirmationState | null>(null);
+  const [urlResult, setUrlResult] = useState<UrlProcessResult | null>(null);
   const [lastText, setLastText] = useState('');
 
   const handleCapture = useCallback(async (text: string) => {
@@ -43,6 +45,50 @@ export default function CapturePage() {
       setIsLoading(false);
     }
   }, []);
+
+  const handleUrlCapture = useCallback(async (url: string) => {
+    setIsLoading(true);
+    setConfirmation(null);
+    setUrlResult(null);
+
+    try {
+      const result = await processUrl(url);
+      setUrlResult(result);
+    } catch (error) {
+      console.error('URL capture failed:', error);
+      setUrlResult({
+        status: 'error',
+        url,
+        urlType: 'generic',
+        title: '',
+        one_liner: '',
+        full_summary: '',
+        key_points: [],
+        category: 'Tech',
+        error: error instanceof Error ? error.message : 'Failed to process URL',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const handleUrlDismiss = useCallback(() => {
+    setUrlResult(null);
+  }, []);
+
+  const handleSendSlack = useCallback(async () => {
+    if (!urlResult || urlResult.status === 'error') return;
+
+    await sendSlackNotification({
+      title: urlResult.title,
+      url: urlResult.url,
+      one_liner: urlResult.one_liner,
+      full_summary: urlResult.full_summary,
+      key_points: urlResult.key_points,
+      category: urlResult.category,
+      readTime: urlResult.readTime,
+    });
+  }, [urlResult]);
 
   const handleRecategorize = useCallback(
     async (newCategory: Category | 'Ignore') => {
@@ -92,12 +138,24 @@ export default function CapturePage() {
       <div className="mb-8 animate-fade-up delay-1" style={{ opacity: 0 }}>
         <CaptureInput
           onSubmit={handleCapture}
+          onUrlSubmit={handleUrlCapture}
           isLoading={isLoading}
         />
       </div>
 
+      {/* URL Summary Card */}
+      {urlResult && (
+        <div className="mb-8 animate-fade-up">
+          <LinkSummaryCard
+            result={urlResult}
+            onDismiss={handleUrlDismiss}
+            onSendSlack={handleSendSlack}
+          />
+        </div>
+      )}
+
       {/* Confirmation Card */}
-      {confirmation?.show && (
+      {confirmation?.show && !urlResult && (
         <div className="mb-8">
           <ConfirmCard
             text={confirmation.text}
@@ -112,7 +170,7 @@ export default function CapturePage() {
       )}
 
       {/* Quick tips card */}
-      {!confirmation?.show && (
+      {!confirmation?.show && !urlResult && (
         <div className="animate-fade-up delay-2 glass-card p-5" style={{ opacity: 0 }}>
           <h2 className="mb-4 flex items-center gap-2 text-base font-semibold text-[var(--text-primary)]">
             <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--accent-cyan-dim)] text-xs">
@@ -126,13 +184,16 @@ export default function CapturePage() {
               { text: 'Build landing page for new project', category: 'Project' },
               { text: 'Great quote from the podcast today', category: 'Idea' },
               { text: 'Pay electricity bill by Friday', category: 'Admin' },
+              { text: 'https://example.com/article', category: 'Link' },
             ].map((example, i) => (
               <div
                 key={i}
                 className="flex items-center justify-between rounded-lg bg-[var(--bg-elevated)] px-3 py-2"
               >
                 <span className="text-sm text-[var(--text-secondary)]">&ldquo;{example.text}&rdquo;</span>
-                <span className="text-xs font-medium text-[var(--text-muted)]">{example.category}</span>
+                <span className={`text-xs font-medium ${example.category === 'Link' ? 'text-[#10b981]' : 'text-[var(--text-muted)]'}`}>
+                  {example.category}
+                </span>
               </div>
             ))}
           </div>

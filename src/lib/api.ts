@@ -1,4 +1,4 @@
-import type { CaptureResponse, UpdateResponse, Category, Entry, SearchResponse, AgentResponse, DigestResponse, DailyDigestResponse, WeeklyDigestResponse } from './types';
+import type { CaptureResponse, UpdateResponse, Category, Entry, SearchResponse, AgentResponse, DigestResponse, DailyDigestResponse, WeeklyDigestResponse, UrlProcessResult } from './types';
 
 // n8n webhook base URL - configure in environment
 const N8N_BASE_URL = process.env.NEXT_PUBLIC_N8N_URL || 'https://n8n.srv1236227.hstgr.cloud';
@@ -214,6 +214,29 @@ export async function askAgent(
   }
 }
 
+// Delete (archive) an entry
+export async function deleteEntry(pageId: string): Promise<{ status: 'deleted' | 'error'; error?: string }> {
+  try {
+    const response = await fetch('/api/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ page_id: pageId }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Delete error:', error);
+    return {
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
 // Fetch digest (daily or weekly)
 export async function fetchDigest(type: 'daily'): Promise<DailyDigestResponse>;
 export async function fetchDigest(type: 'weekly'): Promise<WeeklyDigestResponse>;
@@ -253,5 +276,79 @@ export async function fetchDigest(type: 'daily' | 'weekly'): Promise<DigestRespo
         counts: { completedTasks: 0, completedProjects: 0, totalInbox: 0 },
       };
     }
+  }
+}
+
+// Process URL - Extract content and generate summary
+export async function processUrl(url: string): Promise<UrlProcessResult> {
+  try {
+    const response = await fetch('/api/process-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Process URL error:', error);
+    return {
+      status: 'error',
+      url,
+      urlType: 'generic',
+      title: '',
+      one_liner: '',
+      full_summary: '',
+      key_points: [],
+      category: 'Tech',
+      error: error instanceof Error ? error.message : 'Failed to process URL',
+    };
+  }
+}
+
+// URL detection helper
+export function isUrl(text: string): boolean {
+  const urlRegex = /https?:\/\/[^\s]+/;
+  return urlRegex.test(text);
+}
+
+// Extract URL from text
+export function extractUrl(text: string): string | null {
+  const urlRegex = /https?:\/\/[^\s]+/;
+  const match = text.match(urlRegex);
+  return match ? match[0] : null;
+}
+
+// Send URL summary to Slack
+export async function sendSlackNotification(data: {
+  title: string;
+  url: string;
+  one_liner: string;
+  full_summary: string;
+  key_points: string[];
+  category: string;
+  readTime?: string;
+}): Promise<{ status: 'sent' | 'error'; error?: string }> {
+  try {
+    const response = await fetch('/api/send-slack', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Send Slack error:', error);
+    return {
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Failed to send to Slack',
+    };
   }
 }
