@@ -153,12 +153,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Extract search terms from query
+    // Extract search terms from query (allow 2+ character words)
     const searchTerms = query
       .toLowerCase()
       .replace(/[^\w\s]/g, '')
       .split(/\s+/)
-      .filter(term => term.length > 2); // Filter out short words
+      .filter(term => term.length >= 2); // Allow 2+ character words
 
     // Search all databases in parallel
     const [people, projects, ideas, admin] = await Promise.all([
