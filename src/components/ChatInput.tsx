@@ -2,8 +2,8 @@
 
 import { useState, useCallback, useEffect, useRef, KeyboardEvent } from 'react';
 
-interface CaptureInputProps {
-  onSubmit: (text: string) => Promise<void>;
+interface ChatInputProps {
+  onSend: (text: string) => Promise<void>;
   isLoading?: boolean;
   placeholder?: string;
 }
@@ -52,16 +52,17 @@ declare global {
   }
 }
 
-export function CaptureInput({
-  onSubmit,
+export function ChatInput({
+  onSend,
   isLoading = false,
-  placeholder = "What's on your mind?",
-}: CaptureInputProps) {
+  placeholder = 'Ask anything...',
+}: ChatInputProps) {
   const [text, setText] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Check for speech recognition support
   useEffect(() => {
@@ -73,12 +74,12 @@ export function CaptureInput({
     const trimmed = text.trim();
     if (!trimmed || isLoading) return;
 
-    await onSubmit(trimmed);
+    await onSend(trimmed);
     setText('');
-  }, [text, isLoading, onSubmit]);
+  }, [text, isLoading, onSend]);
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
     }
@@ -145,17 +146,15 @@ export function CaptureInput({
     }
   }, [isListening, startListening, stopListening]);
 
-  const dynamicPlaceholder = isListening ? 'Listening...' : placeholder;
-
   return (
     <div className="relative">
-      {/* Animated border glow when focused or listening */}
+      {/* Animated border glow */}
       <div
         className={`absolute -inset-[1px] rounded-2xl bg-gradient-to-r opacity-0 blur-sm transition-opacity duration-500 ${
           isListening
             ? 'from-[var(--accent-red)] via-[var(--accent-purple)] to-[var(--accent-red)] opacity-80'
             : isFocused
-              ? 'from-[var(--accent-cyan)] via-[var(--accent-purple)] to-[var(--accent-cyan)] opacity-60'
+              ? 'from-[#a855f7] via-[#6366f1] to-[#a855f7] opacity-70'
               : ''
         }`}
         style={{
@@ -164,93 +163,61 @@ export function CaptureInput({
         }}
       />
 
-      <div className="relative glass-card p-1">
-        <textarea
+      <div className="relative flex items-center gap-2 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] p-2">
+        <input
+          ref={inputRef}
+          type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
-          placeholder={dynamicPlaceholder}
+          placeholder={isListening ? 'Listening...' : placeholder}
           disabled={isLoading}
-          rows={3}
-          className="w-full resize-none rounded-xl bg-[var(--bg-elevated)] px-4 py-4 pr-28 text-lg text-[var(--text-primary)] placeholder-[var(--text-muted)] transition-all duration-300 focus:outline-none disabled:opacity-50"
-          style={{ fontFamily: 'var(--font-sans)' }}
+          className="flex-1 bg-transparent px-3 py-2 text-base text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none disabled:opacity-50"
         />
 
-        {/* Action buttons container */}
-        <div className="absolute bottom-4 right-4 flex items-center gap-2">
-          {/* Voice button */}
-          {speechSupported && (
-            <button
-              onClick={toggleListening}
-              disabled={isLoading}
-              className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-200 ${
-                isListening
-                  ? 'bg-[var(--accent-red)] text-white shadow-lg shadow-red-500/30 animate-pulse'
-                  : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]'
-              } disabled:opacity-30`}
-              aria-label={isListening ? 'Stop listening' : 'Start voice input'}
-              title={isListening ? 'Stop listening' : 'Voice input'}
-            >
-              {isListening ? (
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="6" y="6" width="12" height="12" rx="2" />
-                </svg>
-              ) : (
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  <line x1="12" x2="12" y1="19" y2="22" />
-                </svg>
-              )}
-            </button>
-          )}
-
-          {/* Send button */}
+        {/* Voice button */}
+        {speechSupported && (
           <button
-            onClick={handleSubmit}
-            disabled={!text.trim() || isLoading}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--accent-cyan)] to-[#00a8cc] text-[var(--bg-deep)] shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-[0_0_20px_rgba(0,212,255,0.4)] active:scale-95 disabled:opacity-30 disabled:hover:scale-100 disabled:hover:shadow-lg"
-            aria-label="Send"
-            title="Capture thought"
+            onClick={toggleListening}
+            disabled={isLoading}
+            className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-200 ${
+              isListening
+                ? 'bg-[var(--accent-red)] text-white shadow-lg shadow-red-500/30 animate-pulse'
+                : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            } disabled:opacity-30`}
+            aria-label={isListening ? 'Stop listening' : 'Voice input'}
           >
-            {isLoading ? (
-              <div className="spinner" />
+            {isListening ? (
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
             ) : (
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 2L11 13" />
-                <path d="M22 2L15 22L11 13L2 9L22 2Z" />
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" x2="12" y1="19" y2="22" />
               </svg>
             )}
           </button>
-        </div>
-      </div>
-
-      {/* Keyboard hint */}
-      <div className="mt-3 flex items-center justify-center gap-3 text-xs text-[var(--text-muted)]">
-        <div className="flex items-center gap-1.5">
-          <kbd className="rounded-md bg-[var(--bg-elevated)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]">
-            ⌘
-          </kbd>
-          <span>+</span>
-          <kbd className="rounded-md bg-[var(--bg-elevated)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]">
-            Enter
-          </kbd>
-          <span className="ml-1">to send</span>
-        </div>
-        {speechSupported && (
-          <>
-            <span className="text-[var(--border-subtle)]">•</span>
-            <div className="flex items-center gap-1">
-              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-              </svg>
-              <span>for voice</span>
-            </div>
-          </>
         )}
+
+        {/* Send button */}
+        <button
+          onClick={handleSubmit}
+          disabled={!text.trim() || isLoading}
+          className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#a855f7] to-[#6366f1] text-white shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-[0_0_20px_rgba(168,85,247,0.4)] active:scale-95 disabled:opacity-30 disabled:hover:scale-100"
+          aria-label="Send"
+        >
+          {isLoading ? (
+            <div className="spinner" />
+          ) : (
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z" />
+            </svg>
+          )}
+        </button>
       </div>
     </div>
   );

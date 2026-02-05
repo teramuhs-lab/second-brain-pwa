@@ -26,6 +26,15 @@ const NAV_ITEMS = [
     ),
   },
   {
+    href: '/ask',
+    label: 'Ask',
+    icon: (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z" />
+      </svg>
+    ),
+  },
+  {
     href: '/search',
     label: 'Search',
     icon: (
