@@ -65,45 +65,51 @@ async function fetchYouTubeInfo(url: string): Promise<{
 }
 
 // Extract YouTube video description from page's embedded JSON
-async function fetchYouTubeDescription(html: string): Promise<string> {
-  // YouTube embeds video data in ytInitialPlayerResponse or ytInitialData
-  // Look for shortDescription in the page's JSON
+function fetchYouTubeDescription(html: string): string {
+  // Method 1: Direct extraction of shortDescription (most reliable)
+  // Match everything between "shortDescription":" and the next unescaped quote
+  // This handles escaped characters like \n, \", etc.
+  const directMatch = html.match(/"shortDescription"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (directMatch && directMatch[1]) {
+    try {
+      // Parse the JSON string to unescape \n, \u0026, etc.
+      const description = JSON.parse(`"${directMatch[1]}"`);
+      if (description && description.length > 20) {
+        return description;
+      }
+    } catch {
+      // If JSON parse fails, do manual unescaping
+      const desc = directMatch[1]
+        .replace(/\\n/g, '\n')
+        .replace(/\\"/g, '"')
+        .replace(/\\u0026/g, '&')
+        .replace(/\\\\/g, '\\');
+      if (desc && desc.length > 20) {
+        return desc;
+      }
+    }
+  }
 
-  // Try ytInitialPlayerResponse first (most reliable for description)
-  const playerResponseMatch = html.match(/var ytInitialPlayerResponse\s*=\s*(\{.+?\});/s);
+  // Method 2: Try to extract from ytInitialPlayerResponse JSON blob
+  // Use a greedy match to capture the entire JSON object
+  const playerResponseMatch = html.match(/var\s+ytInitialPlayerResponse\s*=\s*(\{[\s\S]*?\});\s*var\s+/);
   if (playerResponseMatch) {
     try {
       const data = JSON.parse(playerResponseMatch[1]);
       const description = data?.videoDetails?.shortDescription;
-      if (description) return description;
+      if (description && description.length > 20) return description;
     } catch {
-      // Continue to next method
+      // JSON parsing failed, continue to next method
     }
   }
 
-  // Try ytInitialData as fallback
-  const initialDataMatch = html.match(/var ytInitialData\s*=\s*(\{.+?\});/s);
-  if (initialDataMatch) {
+  // Method 3: Look for videoDetails object pattern
+  const videoDetailsMatch = html.match(/"videoDetails"\s*:\s*\{[^}]*"shortDescription"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (videoDetailsMatch && videoDetailsMatch[1]) {
     try {
-      const data = JSON.parse(initialDataMatch[1]);
-      // Navigate to description in various possible paths
-      const description =
-        data?.contents?.twoColumnWatchNextResults?.results?.results?.contents?.[1]?.videoSecondaryInfoRenderer?.attributedDescription?.content ||
-        data?.contents?.twoColumnWatchNextResults?.results?.results?.contents?.[1]?.videoSecondaryInfoRenderer?.description?.simpleText;
-      if (description) return description;
+      return JSON.parse(`"${videoDetailsMatch[1]}"`);
     } catch {
-      // Continue to fallback
-    }
-  }
-
-  // Try finding description in script tags with different pattern
-  const descriptionMatch = html.match(/"shortDescription"\s*:\s*"([^"]+)"/);
-  if (descriptionMatch) {
-    // Unescape the JSON string
-    try {
-      return JSON.parse(`"${descriptionMatch[1]}"`);
-    } catch {
-      return descriptionMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+      return videoDetailsMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
     }
   }
 
@@ -167,7 +173,7 @@ async function extractContent(url: string, urlType: UrlType): Promise<{
     }
 
     // Extract the actual video description from page's embedded JSON
-    const videoDescription = await fetchYouTubeDescription(html);
+    const videoDescription = fetchYouTubeDescription(html);
     if (videoDescription && videoDescription.length > 20) {
       content = videoDescription;
     } else {
