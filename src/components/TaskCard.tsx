@@ -108,8 +108,10 @@ export function TaskCard({
     setShowSnooze(false);
     setShowCustomDate(false);
     setShowFloatingCard(false);
+    // Create date at noon to avoid timezone boundary issues
     const date = new Date();
     date.setDate(date.getDate() + days);
+    date.setHours(12, 0, 0, 0); // Set to noon
     await onSnooze(task.id, date);
     setIsLoading(false);
   };
