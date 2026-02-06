@@ -148,55 +148,125 @@ export function TaskDetailSheet({
 
       {/* Floating bottom sheet - no backdrop */}
       <div
-        className={`fixed bottom-16 left-2 right-2 z-50 bg-[#1e1e2a] rounded-xl shadow-2xl border border-gray-800 transition-all duration-200 ${
+        className={`fixed bottom-20 left-3 right-3 z-50 bg-[#1e1e2a] rounded-2xl shadow-2xl border border-gray-700 transition-all duration-200 ${
           isAnimating ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0 pointer-events-none'
         }`}
       >
-          {/* Single compact content area */}
-          <div className={`px-3 py-2 ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}>
-            {/* Row 1: Title + Status */}
-            <div className="flex items-start justify-between gap-2">
-              <h2 className={`text-sm font-medium text-white leading-tight flex-1 ${isCompleted ? 'line-through opacity-60' : ''}`}>
-                {task.title}
-              </h2>
-              <div className="flex gap-0.5 shrink-0">
-                {statusOptions.map((s) => (
-                  <button key={s} onClick={() => handleStatusChange(s)} className={`px-1.5 rounded text-[9px] ${s === task.status ? 'bg-cyan-500 text-gray-900' : 'text-gray-500'}`}>{s}</button>
-                ))}
-              </div>
+          {/* Content area */}
+          <div className={`px-4 py-4 ${isLoading ? 'opacity-50 pointer-events-none' : ''}`}>
+            {/* Title */}
+            <h2 className={`text-base font-semibold text-white leading-snug ${isCompleted ? 'line-through opacity-60' : ''}`}>
+              {task.title}
+            </h2>
+
+            {/* Status buttons */}
+            <div className="mt-3 flex gap-2">
+              {statusOptions.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => handleStatusChange(s)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    s === task.status
+                      ? 'bg-cyan-500 text-gray-900'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
             </div>
 
-            {/* Row 2: Meta + Actions */}
-            <div className="mt-1 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-[10px]">
-                <span className="text-gray-500">{currentCategory}</span>
-                {task.priority && <span className={PRIORITY_COLORS[task.priority]}>{task.priority}</span>}
-                {task.due_date && <span className={isOverdue ? 'text-red-400' : 'text-gray-500'}>{isOverdue ? '⚠' : ''}{new Date(task.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-              </div>
-              <div className="flex items-center gap-1">
+            {/* Meta info */}
+            <div className="mt-3 flex items-center gap-3 text-xs text-gray-400">
+              <span>{currentCategory}</span>
+              {task.priority && <span className={PRIORITY_COLORS[task.priority]}>{task.priority}</span>}
+              {task.due_date && (
+                <span className={isOverdue ? 'text-red-400' : ''}>
+                  {isOverdue ? '⚠ ' : ''}{new Date(task.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </span>
+              )}
+            </div>
+
+            {/* Divider */}
+            <div className="mt-4 border-t border-gray-700" />
+
+            {/* Actions row */}
+            <div className="mt-3 flex items-center justify-between">
+              {/* Move to category */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">Move to:</span>
                 {CATEGORY_OPTIONS.filter(c => c.value !== currentCategory).map((c) => (
-                  <button key={c.value} onClick={() => handleRecategorize(c.value)} className="text-[10px] opacity-60 hover:opacity-100">{c.icon}</button>
+                  <button
+                    key={c.value}
+                    onClick={() => handleRecategorize(c.value)}
+                    className="text-lg hover:scale-110 transition-transform"
+                  >
+                    {c.icon}
+                  </button>
                 ))}
-                <span className="text-gray-700 mx-0.5">|</span>
-                <button onClick={() => setShowSnoozeOptions(!showSnoozeOptions)} className="text-gray-500 hover:text-cyan-400"><svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></button>
-                <button onClick={handleComplete} className="text-gray-500 hover:text-green-400"><svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
-                <button onClick={() => setShowDeleteConfirm(!showDeleteConfirm)} className="text-gray-500 hover:text-red-400"><svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowSnoozeOptions(!showSnoozeOptions)}
+                  className="p-2 rounded-lg text-gray-400 hover:text-cyan-400 hover:bg-gray-800 transition-colors"
+                >
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                  </svg>
+                </button>
+                <button
+                  onClick={handleComplete}
+                  className="p-2 rounded-lg text-gray-400 hover:text-green-400 hover:bg-gray-800 transition-colors"
+                >
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(!showDeleteConfirm)}
+                  className="p-2 rounded-lg text-gray-400 hover:text-red-400 hover:bg-gray-800 transition-colors"
+                >
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
               </div>
             </div>
 
-            {/* Conditional rows */}
+            {/* Snooze options */}
             {showSnoozeOptions && (
-              <div className="mt-1 flex gap-1">
-                {[{ l: '1d', d: 1 }, { l: '1w', d: 7 }, { l: '1m', d: 30 }].map((o) => (
-                  <button key={o.l} onClick={() => handleSnooze(o.d)} className="px-1.5 rounded bg-cyan-900/50 text-cyan-400 text-[9px]">{o.l}</button>
+              <div className="mt-3 flex gap-2">
+                {[{ l: '1 day', d: 1 }, { l: '1 week', d: 7 }, { l: '1 month', d: 30 }].map((o) => (
+                  <button
+                    key={o.l}
+                    onClick={() => handleSnooze(o.d)}
+                    className="px-3 py-1.5 rounded-lg bg-cyan-900/50 text-cyan-400 text-xs font-medium hover:bg-cyan-900/70 transition-colors"
+                  >
+                    {o.l}
+                  </button>
                 ))}
               </div>
             )}
+
+            {/* Delete confirmation */}
             {showDeleteConfirm && (
-              <div className="mt-1 flex gap-1 text-[9px]">
-                <span className="text-gray-400">Delete?</span>
-                <button onClick={handleDelete} className="px-1.5 rounded bg-red-500 text-white">Yes</button>
-                <button onClick={() => setShowDeleteConfirm(false)} className="px-1.5 rounded bg-gray-700 text-gray-300">No</button>
+              <div className="mt-3 flex items-center gap-3">
+                <span className="text-sm text-gray-400">Delete this task?</span>
+                <button
+                  onClick={handleDelete}
+                  className="px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-medium hover:bg-red-600 transition-colors"
+                >
+                  Yes, delete
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-3 py-1.5 rounded-lg bg-gray-700 text-gray-300 text-xs font-medium hover:bg-gray-600 transition-colors"
+                >
+                  Cancel
+                </button>
               </div>
             )}
           </div>
