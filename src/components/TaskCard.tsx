@@ -119,7 +119,10 @@ export function TaskCard({
     setShowSnooze(false);
     setShowCustomDate(false);
     setShowFloatingCard(false);
-    const date = new Date(dateStr + 'T09:00:00');
+    // Parse date parts to avoid timezone issues
+    // Input format is "YYYY-MM-DD"
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day, 12, 0, 0); // Use noon to avoid timezone boundary issues
     await onSnooze(task.id, date);
     setIsLoading(false);
   };
