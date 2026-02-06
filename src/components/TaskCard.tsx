@@ -2,6 +2,9 @@
 
 import { useState, useRef } from 'react';
 import type { Entry, Category } from '@/lib/types';
+import { FloatingCard } from './FloatingCard';
+import { NotesEditor } from './NotesEditor';
+import { updateEntry } from '@/lib/api';
 
 interface TaskCardProps {
   task: Entry;
@@ -11,6 +14,7 @@ interface TaskCardProps {
   onSnooze: (taskId: string, date: Date) => Promise<void>;
   onRecategorize: (taskId: string, newCategory: Category) => Promise<void>;
   onDelete: (taskId: string) => Promise<void>;
+  onTaskUpdate?: () => Promise<void>;
 }
 
 const CATEGORY_OPTIONS: { value: Category; label: string; icon: string }[] = [
@@ -20,7 +24,6 @@ const CATEGORY_OPTIONS: { value: Category; label: string; icon: string }[] = [
   { value: 'Admin', label: 'Admin', icon: '📋' },
 ];
 
-// Map database names to Category type
 const DATABASE_TO_CATEGORY: Record<string, Category> = {
   admin: 'Admin',
   projects: 'Project',
@@ -48,45 +51,47 @@ export function TaskCard({
   onSnooze,
   onRecategorize,
   onDelete,
+  onTaskUpdate,
 }: TaskCardProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [showFloatingCard, setShowFloatingCard] = useState(false);
+  const [showNotesEditor, setShowNotesEditor] = useState(false);
   const [showSnooze, setShowSnooze] = useState(false);
   const [showCustomDate, setShowCustomDate] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showStatus, setShowStatus] = useState(false);
-  const [showRecategorize, setShowRecategorize] = useState(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
+  const [localNotes, setLocalNotes] = useState(task.notes || '');
   const startX = useRef(0);
   const currentX = useRef(0);
 
   const currentCategory = DATABASE_TO_CATEGORY[database];
-
   const statusOptions = STATUS_OPTIONS[database] || ['Todo', 'Done'];
   const completedStatus = database === 'projects' ? 'Complete' : database === 'people' ? 'Dormant' : 'Done';
   const isCompleted = task.status === completedStatus;
 
   // Swipe handlers
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (showFloatingCard) return;
     startX.current = e.touches[0].clientX;
     currentX.current = e.touches[0].clientX;
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    if (showFloatingCard) return;
     currentX.current = e.touches[0].clientX;
     const diff = currentX.current - startX.current;
-    // Allow both directions: right (positive) for complete, left (negative) for snooze
     setSwipeOffset(Math.min(Math.max(diff, -100), 100));
   };
 
   const handleTouchEnd = async () => {
+    if (showFloatingCard) return;
     if (swipeOffset > 60) {
-      // Right swipe: Trigger complete
       setIsLoading(true);
       await onComplete(task.id);
       setIsLoading(false);
     } else if (swipeOffset < -60) {
-      // Left swipe: Open snooze picker
+      setShowFloatingCard(true);
       setShowSnooze(true);
     }
     setSwipeOffset(0);
@@ -94,7 +99,6 @@ export function TaskCard({
 
   const handleStatusChange = async (newStatus: string) => {
     setIsLoading(true);
-    setShowStatus(false);
     await onStatusChange(task.id, newStatus);
     setIsLoading(false);
   };
@@ -103,6 +107,7 @@ export function TaskCard({
     setIsLoading(true);
     setShowSnooze(false);
     setShowCustomDate(false);
+    setShowFloatingCard(false);
     const date = new Date();
     date.setDate(date.getDate() + days);
     await onSnooze(task.id, date);
@@ -113,18 +118,16 @@ export function TaskCard({
     setIsLoading(true);
     setShowSnooze(false);
     setShowCustomDate(false);
+    setShowFloatingCard(false);
     const date = new Date(dateStr + 'T09:00:00');
     await onSnooze(task.id, date);
     setIsLoading(false);
   };
 
   const handleRecategorize = async (newCategory: Category) => {
-    if (newCategory === currentCategory) {
-      setShowRecategorize(false);
-      return;
-    }
+    if (newCategory === currentCategory) return;
     setIsLoading(true);
-    setShowRecategorize(false);
+    setShowFloatingCard(false);
     await onRecategorize(task.id, newCategory);
     setIsLoading(false);
   };
@@ -132,8 +135,31 @@ export function TaskCard({
   const handleDelete = async () => {
     setIsLoading(true);
     setShowDeleteConfirm(false);
+    setShowFloatingCard(false);
     await onDelete(task.id);
     setIsLoading(false);
+  };
+
+  const handleComplete = async () => {
+    setIsLoading(true);
+    setShowFloatingCard(false);
+    await onComplete(task.id);
+    setIsLoading(false);
+  };
+
+  const handleNotesSave = async (notes: string) => {
+    setLocalNotes(notes);
+    await updateEntry(task.id, database, { notes });
+    if (onTaskUpdate) {
+      await onTaskUpdate();
+    }
+  };
+
+  const closeFloatingCard = () => {
+    setShowFloatingCard(false);
+    setShowSnooze(false);
+    setShowCustomDate(false);
+    setShowDeleteConfirm(false);
   };
 
   const formatDate = (dateStr?: string) => {
@@ -151,271 +177,294 @@ export function TaskCard({
   const isOverdue = task.due_date && new Date(task.due_date) < new Date();
 
   return (
-    <div className="relative overflow-hidden rounded-xl">
-      {/* Right swipe background (complete) */}
-      <div
-        className="absolute inset-y-0 left-0 flex items-center justify-start bg-[var(--accent-green)] px-4 transition-opacity"
-        style={{ opacity: swipeOffset > 20 ? 1 : 0, width: '100px' }}
-      >
-        <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-          <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </div>
+    <>
+      <div ref={cardRef} className="relative overflow-hidden rounded-xl">
+        {/* Right swipe background (complete) */}
+        <div
+          className="absolute inset-y-0 left-0 flex items-center justify-start bg-[var(--accent-green)] px-4 transition-opacity"
+          style={{ opacity: swipeOffset > 20 ? 1 : 0, width: '100px' }}
+        >
+          <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
 
-      {/* Left swipe background (snooze) */}
-      <div
-        className="absolute inset-y-0 right-0 flex items-center justify-end bg-[var(--accent-cyan)] px-4 transition-opacity"
-        style={{ opacity: swipeOffset < -20 ? 1 : 0, width: '100px' }}
-      >
-        <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-          <circle cx="12" cy="12" r="10" />
-          <path d="M12 6v6l4 2" />
-        </svg>
-      </div>
+        {/* Left swipe background (snooze) */}
+        <div
+          className="absolute inset-y-0 right-0 flex items-center justify-end bg-[var(--accent-cyan)] px-4 transition-opacity"
+          style={{ opacity: swipeOffset < -20 ? 1 : 0, width: '100px' }}
+        >
+          <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 6v6l4 2" />
+          </svg>
+        </div>
 
-      {/* Card content */}
-      <div
-        className={`relative glass-card p-4 transition-all duration-200 ${isLoading ? 'opacity-50' : ''} ${isCompleted ? 'opacity-60' : ''}`}
-        style={{ transform: `translateX(${swipeOffset}px)` }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        <div className="flex items-start justify-between gap-3">
-          {/* Left side - checkbox and content */}
-          <div className="flex items-start gap-3 flex-1 min-w-0">
-            {/* Checkbox */}
-            <button
-              onClick={() => onComplete(task.id)}
-              disabled={isLoading}
-              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all ${
-                isCompleted
-                  ? 'border-[var(--accent-green)] bg-[var(--accent-green)]'
-                  : 'border-[var(--border-glass)] hover:border-[var(--accent-cyan)]'
-              }`}
-            >
-              {isCompleted && (
-                <svg className="h-3 w-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                  <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              )}
-            </button>
-
-            {/* Content - Tap to expand inline */}
-            <div
-              className="flex-1 min-w-0 cursor-pointer"
-              onClick={() => setIsExpanded(!isExpanded)}
-            >
-              <h3 className={`text-sm font-medium text-[var(--text-primary)] line-clamp-2 leading-snug ${isCompleted ? 'line-through opacity-60' : ''}`}>
-                {task.title}
-              </h3>
-
-              <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                {/* Status badge */}
-                <button
-                  onClick={() => setShowStatus(!showStatus)}
-                  className="rounded-md bg-[var(--bg-elevated)] px-2 py-0.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface)]"
-                >
-                  {task.status}
-                </button>
-
-                {/* Priority badge */}
-                {task.priority && (
-                  <span className={`rounded-md border px-2 py-0.5 text-xs ${PRIORITY_COLORS[task.priority] || ''}`}>
-                    {task.priority}
-                  </span>
+        {/* Card content */}
+        <div
+          className={`relative glass-card p-4 transition-all duration-200 ${isLoading ? 'opacity-50' : ''} ${isCompleted ? 'opacity-60' : ''}`}
+          style={{ transform: `translateX(${swipeOffset}px)` }}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+          <div className="flex items-start justify-between gap-3">
+            {/* Left side - checkbox and content */}
+            <div className="flex items-start gap-3 flex-1 min-w-0">
+              {/* Checkbox */}
+              <button
+                onClick={() => onComplete(task.id)}
+                disabled={isLoading}
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all ${
+                  isCompleted
+                    ? 'border-[var(--accent-green)] bg-[var(--accent-green)]'
+                    : 'border-[var(--border-glass)] hover:border-[var(--accent-cyan)]'
+                }`}
+              >
+                {isCompleted && (
+                  <svg className="h-3 w-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                    <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                 )}
+              </button>
 
-                {/* Due date */}
-                {task.due_date && (
-                  <span className={`text-xs ${isOverdue ? 'text-[var(--accent-red)]' : 'text-[var(--text-muted)]'}`}>
-                    {isOverdue && '⚠ '}{formatDate(task.due_date)}
+              {/* Content - Tap to open floating card */}
+              <div
+                className="flex-1 min-w-0 cursor-pointer"
+                onClick={() => setShowFloatingCard(true)}
+              >
+                <h3 className={`text-sm font-medium text-[var(--text-primary)] line-clamp-2 leading-snug ${isCompleted ? 'line-through opacity-60' : ''}`}>
+                  {task.title}
+                </h3>
+
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  {/* Status badge */}
+                  <span className="rounded-md bg-[var(--bg-elevated)] px-2 py-0.5 text-xs text-[var(--text-secondary)]">
+                    {task.status}
                   </span>
-                )}
+
+                  {/* Priority badge */}
+                  {task.priority && (
+                    <span className={`rounded-md border px-2 py-0.5 text-xs ${PRIORITY_COLORS[task.priority] || ''}`}>
+                      {task.priority}
+                    </span>
+                  )}
+
+                  {/* Due date */}
+                  {task.due_date && (
+                    <span className={`text-xs ${isOverdue ? 'text-[var(--accent-red)]' : 'text-[var(--text-muted)]'}`}>
+                      {isOverdue && '⚠ '}{formatDate(task.due_date)}
+                    </span>
+                  )}
+
+                  {/* Notes indicator */}
+                  {(localNotes || task.notes) && (
+                    <span className="text-xs text-[var(--text-muted)]">📝</span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Right side - action buttons */}
-          <div className="flex shrink-0 gap-1">
-            {/* Recategorize button */}
+            {/* Right side - more button */}
             <button
-              onClick={() => setShowRecategorize(!showRecategorize)}
+              onClick={() => setShowFloatingCard(true)}
               className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
-              title="Move to different category"
+              title="More options"
             >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M12 11v6M9 14h6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-            {/* Snooze button */}
-            <button
-              onClick={() => setShowSnooze(!showSnooze)}
-              className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
-              title="Snooze"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 6v6l4 2" />
-              </svg>
-            </button>
-            {/* Delete button */}
-            <button
-              onClick={() => setShowDeleteConfirm(!showDeleteConfirm)}
-              className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[rgba(239,68,68,0.1)] hover:text-[#ef4444]"
-              title="Delete"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M10 11v6M14 11v6" strokeLinecap="round" strokeLinejoin="round" />
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="6" r="2" />
+                <circle cx="12" cy="12" r="2" />
+                <circle cx="12" cy="18" r="2" />
               </svg>
             </button>
           </div>
         </div>
+      </div>
 
-        {/* Expanded detail panel */}
-        {isExpanded && (
-          <div className="mt-3 border-t border-[var(--border-subtle)] pt-3 space-y-3">
-            {/* Status section */}
-            <div>
-              <p className="mb-2 text-xs text-[var(--text-muted)]">Status</p>
-              <div className="flex flex-wrap gap-2">
-                {statusOptions.map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => handleStatusChange(status)}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
-                      status === task.status
-                        ? 'bg-[var(--accent-cyan)] text-[var(--bg-deep)]'
-                        : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
-                    }`}
-                  >
-                    {status}
-                  </button>
-                ))}
-              </div>
-            </div>
+      {/* Floating Card */}
+      <FloatingCard
+        isOpen={showFloatingCard}
+        anchorRef={cardRef}
+        onClose={closeFloatingCard}
+      >
+        {/* Title */}
+        <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3 pr-2">
+          {task.title}
+        </h3>
 
-            {/* Move to section */}
-            <div>
-              <p className="mb-2 text-xs text-[var(--text-muted)]">Move to</p>
-              <div className="flex flex-wrap gap-2">
-                {CATEGORY_OPTIONS.filter(cat => cat.value !== currentCategory).map((cat) => (
-                  <button
-                    key={cat.value}
-                    onClick={() => handleRecategorize(cat.value)}
-                    className="flex items-center gap-1.5 rounded-lg bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-all"
-                  >
-                    <span>{cat.icon}</span>
-                    <span>{cat.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Actions section */}
-            <div className="flex gap-2">
+        {/* Status section */}
+        <div className="mb-3">
+          <p className="mb-2 text-xs text-[var(--text-muted)]">Status</p>
+          <div className="flex flex-wrap gap-1.5">
+            {statusOptions.map((status) => (
               <button
-                onClick={() => setShowSnooze(!showSnooze)}
-                className={`flex-1 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
-                  showSnooze
+                key={status}
+                onClick={() => handleStatusChange(status)}
+                disabled={isLoading}
+                className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                  status === task.status
                     ? 'bg-[var(--accent-cyan)] text-[var(--bg-deep)]'
                     : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
                 }`}
               >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <path d="M12 6v6l4 2"/>
-                </svg>
-                Snooze
+                {status}
               </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Move to section */}
+        <div className="mb-3">
+          <p className="mb-2 text-xs text-[var(--text-muted)]">Move to</p>
+          <div className="flex flex-wrap gap-1.5">
+            {CATEGORY_OPTIONS.filter(cat => cat.value !== currentCategory).map((cat) => (
               <button
-                onClick={() => onComplete(task.id)}
-                className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-green-900/30 text-green-400 px-3 py-2 text-xs font-medium hover:bg-green-900/50 transition-all"
+                key={cat.value}
+                onClick={() => handleRecategorize(cat.value)}
+                disabled={isLoading}
+                className="flex items-center gap-1 rounded-lg bg-[var(--bg-elevated)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-all"
               >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                Done
+                <span>{cat.icon}</span>
+                <span>{cat.label}</span>
               </button>
-              <button
-                onClick={() => setShowDeleteConfirm(!showDeleteConfirm)}
-                className={`flex-1 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
-                  showDeleteConfirm
-                    ? 'bg-red-500 text-white'
-                    : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-red-900/30 hover:text-red-400'
-                }`}
-              >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                Delete
-              </button>
-            </div>
+            ))}
+          </div>
+        </div>
 
-            {/* Snooze options */}
-            {showSnooze && (
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { label: 'Tomorrow', days: 1 },
-                  { label: 'Next Week', days: 7 },
-                  { label: 'Next Month', days: 30 },
-                ].map((option) => (
-                  <button
-                    key={option.label}
-                    onClick={() => handleSnooze(option.days)}
-                    className="rounded-lg bg-cyan-900/50 text-cyan-400 px-3 py-1.5 text-xs font-medium hover:bg-cyan-900/70 transition-colors"
-                  >
-                    {option.label}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setShowCustomDate(!showCustomDate)}
-                  className="rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--bg-surface)] transition-colors"
-                >
-                  Pick Date
-                </button>
-              </div>
-            )}
-
-            {/* Custom date picker */}
-            {showSnooze && showCustomDate && (
-              <input
-                type="date"
-                min={new Date().toISOString().split('T')[0]}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    handleCustomDateSnooze(e.target.value);
-                  }
-                }}
-                className="w-full rounded-lg bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent-cyan)]"
-              />
-            )}
-
-            {/* Delete confirmation */}
-            {showDeleteConfirm && (
-              <div className="p-3 rounded-lg bg-red-900/20 border border-red-900/50">
-                <p className="text-center text-sm text-gray-300 mb-3">Delete this task?</p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleDelete}
-                    className="flex-1 rounded-lg bg-red-500 text-white px-3 py-2 text-xs font-medium hover:bg-red-600 transition-colors"
-                  >
-                    Yes, Delete
-                  </button>
-                  <button
-                    onClick={() => setShowDeleteConfirm(false)}
-                    className="flex-1 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)] px-3 py-2 text-xs font-medium hover:bg-[var(--bg-surface)] transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
+        {/* Notes section */}
+        <div className="mb-3">
+          <p className="mb-2 text-xs text-[var(--text-muted)]">Notes</p>
+          <div
+            onClick={() => {
+              setShowFloatingCard(false);
+              setShowNotesEditor(true);
+            }}
+            className="p-2.5 rounded-lg bg-[var(--bg-elevated)] cursor-pointer hover:bg-[var(--bg-surface)] transition-colors"
+          >
+            {localNotes || task.notes ? (
+              <p className="text-xs text-[var(--text-secondary)] line-clamp-2">
+                {localNotes || task.notes}
+              </p>
+            ) : (
+              <p className="text-xs text-[var(--text-muted)] italic">Tap to add notes...</p>
             )}
           </div>
+        </div>
+
+        {/* Actions section */}
+        <div className="flex gap-2 pt-2 border-t border-[var(--border-subtle)]">
+          <button
+            onClick={() => setShowSnooze(!showSnooze)}
+            disabled={isLoading}
+            className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-all ${
+              showSnooze
+                ? 'bg-[var(--accent-cyan)] text-[var(--bg-deep)]'
+                : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
+            }`}
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
+            Snooze
+          </button>
+          <button
+            onClick={handleComplete}
+            disabled={isLoading}
+            className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-green-900/30 text-green-400 px-2 py-2 text-xs font-medium hover:bg-green-900/50 transition-all"
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Done
+          </button>
+          <button
+            onClick={() => setShowDeleteConfirm(!showDeleteConfirm)}
+            disabled={isLoading}
+            className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-all ${
+              showDeleteConfirm
+                ? 'bg-red-500 text-white'
+                : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-red-900/30 hover:text-red-400'
+            }`}
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Delete
+          </button>
+        </div>
+
+        {/* Snooze options */}
+        {showSnooze && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {[
+              { label: 'Tomorrow', days: 1 },
+              { label: 'Next Week', days: 7 },
+              { label: 'Next Month', days: 30 },
+            ].map((option) => (
+              <button
+                key={option.label}
+                onClick={() => handleSnooze(option.days)}
+                disabled={isLoading}
+                className="rounded-lg bg-cyan-900/50 text-cyan-400 px-2.5 py-1.5 text-xs font-medium hover:bg-cyan-900/70 transition-colors"
+              >
+                {option.label}
+              </button>
+            ))}
+            <button
+              onClick={() => setShowCustomDate(!showCustomDate)}
+              className="rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)] px-2.5 py-1.5 text-xs font-medium hover:bg-[var(--bg-surface)] transition-colors"
+            >
+              Pick Date
+            </button>
+          </div>
         )}
-      </div>
-    </div>
+
+        {/* Custom date picker */}
+        {showSnooze && showCustomDate && (
+          <input
+            type="date"
+            min={new Date().toISOString().split('T')[0]}
+            onChange={(e) => {
+              if (e.target.value) {
+                handleCustomDateSnooze(e.target.value);
+              }
+            }}
+            className="mt-2 w-full rounded-lg bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent-cyan)]"
+          />
+        )}
+
+        {/* Delete confirmation */}
+        {showDeleteConfirm && (
+          <div className="mt-3 p-3 rounded-lg bg-red-900/20 border border-red-900/50">
+            <p className="text-center text-sm text-gray-300 mb-3">Delete this task?</p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleDelete}
+                disabled={isLoading}
+                className="flex-1 rounded-lg bg-red-500 text-white px-3 py-2 text-xs font-medium hover:bg-red-600 transition-colors"
+              >
+                Yes, Delete
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)] px-3 py-2 text-xs font-medium hover:bg-[var(--bg-surface)] transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </FloatingCard>
+
+      {/* Notes Editor */}
+      <NotesEditor
+        isOpen={showNotesEditor}
+        taskTitle={task.title}
+        initialNotes={localNotes || task.notes || ''}
+        onSave={handleNotesSave}
+        onClose={() => setShowNotesEditor(false)}
+      />
+    </>
   );
 }

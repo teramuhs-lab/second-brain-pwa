@@ -59,6 +59,7 @@ export interface Entry {
   due_date?: string;
   created?: string;
   url?: string;
+  notes?: string;
 }
 
 // Detailed Entry types (for future use with direct Notion access)
