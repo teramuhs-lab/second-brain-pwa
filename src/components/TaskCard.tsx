@@ -11,6 +11,7 @@ interface TaskCardProps {
   onSnooze: (taskId: string, date: Date) => Promise<void>;
   onRecategorize: (taskId: string, newCategory: Category) => Promise<void>;
   onDelete: (taskId: string) => Promise<void>;
+  onTap?: (task: Entry) => void;
 }
 
 const CATEGORY_OPTIONS: { value: Category; label: string; icon: string }[] = [
@@ -48,6 +49,7 @@ export function TaskCard({
   onSnooze,
   onRecategorize,
   onDelete,
+  onTap,
 }: TaskCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
@@ -200,9 +202,12 @@ export function TaskCard({
               )}
             </button>
 
-            {/* Content */}
-            <div className="flex-1 min-w-0">
-              <h3 className={`text-sm font-medium text-[var(--text-primary)] truncate ${isCompleted ? 'line-through opacity-60' : ''}`}>
+            {/* Content - Tap to open detail sheet */}
+            <div
+              className="flex-1 min-w-0 cursor-pointer"
+              onClick={() => onTap?.(task)}
+            >
+              <h3 className={`text-sm font-medium text-[var(--text-primary)] line-clamp-2 leading-snug ${isCompleted ? 'line-through opacity-60' : ''}`}>
                 {task.title}
               </h3>
 

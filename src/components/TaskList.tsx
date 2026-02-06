@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { TaskCard } from './TaskCard';
+import { TaskDetailSheet } from './TaskDetailSheet';
 import { fetchEntries, markDone, snoozeEntry, updateEntry, recategorize, deleteEntry } from '@/lib/api';
 import type { Entry, Category } from '@/lib/types';
 
@@ -179,6 +180,19 @@ export function TaskList() {
   const [tasks, setTasks] = useState<Entry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<Entry | null>(null);
+  const [isDetailSheetOpen, setIsDetailSheetOpen] = useState(false);
+
+  // Handler for opening detail sheet
+  const handleTaskTap = (task: Entry) => {
+    setSelectedTask(task);
+    setIsDetailSheetOpen(true);
+  };
+
+  // Handler for closing detail sheet
+  const handleCloseDetailSheet = () => {
+    setIsDetailSheetOpen(false);
+  };
 
   const loadTasks = useCallback(async () => {
     setIsLoading(true);
@@ -351,6 +365,7 @@ export function TaskList() {
               onSnooze={handleSnooze}
               onRecategorize={handleRecategorize}
               onDelete={handleDelete}
+              onTap={handleTaskTap}
             />
           ))}
         </div>
@@ -382,6 +397,7 @@ export function TaskList() {
                       onSnooze={handleSnooze}
                       onRecategorize={handleRecategorize}
                       onDelete={handleDelete}
+                      onTap={handleTaskTap}
                     />
                   ))}
                 </div>
@@ -402,6 +418,7 @@ export function TaskList() {
               onSnooze={handleSnooze}
               onRecategorize={handleRecategorize}
               onDelete={handleDelete}
+              onTap={handleTaskTap}
             />
           ))}
         </div>
@@ -410,9 +427,30 @@ export function TaskList() {
       {/* Swipe hint */}
       {!showCompleted && activeTasks.length > 0 && (
         <p className="text-center text-xs text-[var(--text-muted)]">
-          Swipe right to complete • Tap clock to snooze
+          Tap for details • Swipe right to complete
         </p>
       )}
+
+      {/* Task Detail Sheet */}
+      <TaskDetailSheet
+        task={selectedTask}
+        database={activeTab}
+        isOpen={isDetailSheetOpen}
+        onClose={handleCloseDetailSheet}
+        onStatusChange={async (taskId, newStatus) => {
+          await handleStatusChange(taskId, newStatus);
+          // Update selectedTask with new status
+          setSelectedTask(prev => prev ? { ...prev, status: newStatus } : null);
+        }}
+        onComplete={async (taskId) => {
+          await handleComplete(taskId);
+        }}
+        onSnooze={async (taskId, date) => {
+          await handleSnooze(taskId, date);
+        }}
+        onRecategorize={handleRecategorize}
+        onDelete={handleDelete}
+      />
     </div>
   );
 }
