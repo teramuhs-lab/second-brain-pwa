@@ -11,7 +11,6 @@ interface TaskCardProps {
   onSnooze: (taskId: string, date: Date) => Promise<void>;
   onRecategorize: (taskId: string, newCategory: Category) => Promise<void>;
   onDelete: (taskId: string) => Promise<void>;
-  onTap?: (task: Entry) => void;
 }
 
 const CATEGORY_OPTIONS: { value: Category; label: string; icon: string }[] = [
@@ -49,14 +48,14 @@ export function TaskCard({
   onSnooze,
   onRecategorize,
   onDelete,
-  onTap,
 }: TaskCardProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [showStatus, setShowStatus] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [showSnooze, setShowSnooze] = useState(false);
   const [showCustomDate, setShowCustomDate] = useState(false);
-  const [showRecategorize, setShowRecategorize] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showStatus, setShowStatus] = useState(false);
+  const [showRecategorize, setShowRecategorize] = useState(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const startX = useRef(0);
   const currentX = useRef(0);
@@ -202,10 +201,10 @@ export function TaskCard({
               )}
             </button>
 
-            {/* Content - Tap to open detail sheet */}
+            {/* Content - Tap to expand inline */}
             <div
               className="flex-1 min-w-0 cursor-pointer"
-              onClick={() => onTap?.(task)}
+              onClick={() => setIsExpanded(!isExpanded)}
             >
               <h3 className={`text-sm font-medium text-[var(--text-primary)] line-clamp-2 leading-snug ${isCompleted ? 'line-through opacity-60' : ''}`}>
                 {task.title}
@@ -275,114 +274,145 @@ export function TaskCard({
           </div>
         </div>
 
-        {/* Status picker dropdown */}
-        {showStatus && (
-          <div className="mt-3 flex flex-wrap gap-2 border-t border-[var(--border-subtle)] pt-3">
-            {statusOptions.map((status) => (
-              <button
-                key={status}
-                onClick={() => handleStatusChange(status)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
-                  status === task.status
-                    ? 'bg-[var(--accent-cyan)] text-[var(--bg-deep)]'
-                    : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
-                }`}
-              >
-                {status}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Snooze picker dropdown */}
-        {showSnooze && (
-          <div className="mt-3 border-t border-[var(--border-subtle)] pt-3">
-            <div className="flex flex-wrap gap-2">
-              {[
-                { label: 'Tomorrow', days: 1 },
-                { label: 'This Weekend', days: new Date().getDay() === 0 ? 6 : 6 - new Date().getDay() },
-                { label: 'Next Week', days: 7 },
-                { label: 'Next Month', days: 30 },
-              ].map((option) => (
-                <button
-                  key={option.label}
-                  onClick={() => handleSnooze(option.days)}
-                  className="rounded-lg bg-[var(--bg-elevated)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface)]"
-                >
-                  {option.label}
-                </button>
-              ))}
-              <button
-                onClick={() => setShowCustomDate(!showCustomDate)}
-                className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
-                  showCustomDate
-                    ? 'bg-[var(--accent-cyan)] text-[var(--bg-deep)]'
-                    : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
-                }`}
-              >
-                Pick Date
-              </button>
-            </div>
-            {/* Custom date picker */}
-            {showCustomDate && (
-              <div className="mt-3 flex items-center gap-2">
-                <input
-                  type="date"
-                  min={new Date().toISOString().split('T')[0]}
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      handleCustomDateSnooze(e.target.value);
-                    }
-                  }}
-                  className="flex-1 rounded-lg bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent-cyan)]"
-                />
+        {/* Expanded detail panel */}
+        {isExpanded && (
+          <div className="mt-3 border-t border-[var(--border-subtle)] pt-3 space-y-3">
+            {/* Status section */}
+            <div>
+              <p className="mb-2 text-xs text-[var(--text-muted)]">Status</p>
+              <div className="flex flex-wrap gap-2">
+                {statusOptions.map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => handleStatusChange(status)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                      status === task.status
+                        ? 'bg-[var(--accent-cyan)] text-[var(--bg-deep)]'
+                        : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
+                    }`}
+                  >
+                    {status}
+                  </button>
+                ))}
               </div>
-            )}
-          </div>
-        )}
-
-        {/* Recategorize picker dropdown */}
-        {showRecategorize && (
-          <div className="mt-3 border-t border-[var(--border-subtle)] pt-3">
-            <p className="mb-2 text-xs text-[var(--text-muted)]">Move to:</p>
-            <div className="flex flex-wrap gap-2">
-              {CATEGORY_OPTIONS.map((cat) => (
-                <button
-                  key={cat.value}
-                  onClick={() => handleRecategorize(cat.value)}
-                  disabled={cat.value === currentCategory}
-                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
-                    cat.value === currentCategory
-                      ? 'bg-[var(--accent-cyan)] text-[var(--bg-deep)] cursor-default'
-                      : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
-                  }`}
-                >
-                  <span>{cat.icon}</span>
-                  <span>{cat.label}</span>
-                </button>
-              ))}
             </div>
-          </div>
-        )}
 
-        {/* Delete confirmation */}
-        {showDeleteConfirm && (
-          <div className="mt-3 border-t border-[var(--border-subtle)] pt-3">
-            <p className="mb-2 text-xs text-[#ef4444]">Delete this item? This cannot be undone.</p>
+            {/* Move to section */}
+            <div>
+              <p className="mb-2 text-xs text-[var(--text-muted)]">Move to</p>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORY_OPTIONS.filter(cat => cat.value !== currentCategory).map((cat) => (
+                  <button
+                    key={cat.value}
+                    onClick={() => handleRecategorize(cat.value)}
+                    className="flex items-center gap-1.5 rounded-lg bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-all"
+                  >
+                    <span>{cat.icon}</span>
+                    <span>{cat.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Actions section */}
             <div className="flex gap-2">
               <button
-                onClick={handleDelete}
-                className="flex-1 rounded-lg bg-[#ef4444] px-3 py-1.5 text-xs font-medium text-white transition-all hover:bg-[#dc2626]"
+                onClick={() => setShowSnooze(!showSnooze)}
+                className={`flex-1 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
+                  showSnooze
+                    ? 'bg-[var(--accent-cyan)] text-[var(--bg-deep)]'
+                    : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
+                }`}
               >
-                Delete
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M12 6v6l4 2"/>
+                </svg>
+                Snooze
               </button>
               <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 rounded-lg bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-all hover:bg-[var(--bg-surface)]"
+                onClick={() => onComplete(task.id)}
+                className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-green-900/30 text-green-400 px-3 py-2 text-xs font-medium hover:bg-green-900/50 transition-all"
               >
-                Cancel
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Done
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(!showDeleteConfirm)}
+                className={`flex-1 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
+                  showDeleteConfirm
+                    ? 'bg-red-500 text-white'
+                    : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-red-900/30 hover:text-red-400'
+                }`}
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Delete
               </button>
             </div>
+
+            {/* Snooze options */}
+            {showSnooze && (
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: 'Tomorrow', days: 1 },
+                  { label: 'Next Week', days: 7 },
+                  { label: 'Next Month', days: 30 },
+                ].map((option) => (
+                  <button
+                    key={option.label}
+                    onClick={() => handleSnooze(option.days)}
+                    className="rounded-lg bg-cyan-900/50 text-cyan-400 px-3 py-1.5 text-xs font-medium hover:bg-cyan-900/70 transition-colors"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setShowCustomDate(!showCustomDate)}
+                  className="rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--bg-surface)] transition-colors"
+                >
+                  Pick Date
+                </button>
+              </div>
+            )}
+
+            {/* Custom date picker */}
+            {showSnooze && showCustomDate && (
+              <input
+                type="date"
+                min={new Date().toISOString().split('T')[0]}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    handleCustomDateSnooze(e.target.value);
+                  }
+                }}
+                className="w-full rounded-lg bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent-cyan)]"
+              />
+            )}
+
+            {/* Delete confirmation */}
+            {showDeleteConfirm && (
+              <div className="p-3 rounded-lg bg-red-900/20 border border-red-900/50">
+                <p className="text-center text-sm text-gray-300 mb-3">Delete this task?</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleDelete}
+                    className="flex-1 rounded-lg bg-red-500 text-white px-3 py-2 text-xs font-medium hover:bg-red-600 transition-colors"
+                  >
+                    Yes, Delete
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)] px-3 py-2 text-xs font-medium hover:bg-[var(--bg-surface)] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
