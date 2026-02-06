@@ -223,11 +223,16 @@ export async function deleteEntry(pageId: string): Promise<{ status: 'deleted' |
       body: JSON.stringify({ page_id: pageId }),
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    const data = await response.json();
+
+    if (!response.ok || data.status === 'error') {
+      return {
+        status: 'error',
+        error: data.error || `HTTP error: ${response.status}`,
+      };
     }
 
-    return await response.json();
+    return data;
   } catch (error) {
     console.error('Delete error:', error);
     return {
