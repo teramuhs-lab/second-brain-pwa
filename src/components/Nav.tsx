@@ -8,7 +8,7 @@ const NAV_ITEMS = [
     href: '/',
     label: 'Capture',
     icon: (
-      <svg className="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10" />
         <line x1="12" y1="8" x2="12" y2="16" />
         <line x1="8" y1="12" x2="16" y2="12" />
@@ -19,7 +19,7 @@ const NAV_ITEMS = [
     href: '/tasks',
     label: 'Tasks',
     icon: (
-      <svg className="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M9 11l3 3L22 4" />
         <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
       </svg>
@@ -29,7 +29,7 @@ const NAV_ITEMS = [
     href: '/ask',
     label: 'Ask',
     icon: (
-      <svg className="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24" fill="currentColor">
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z" />
       </svg>
     ),
@@ -38,7 +38,7 @@ const NAV_ITEMS = [
     href: '/search',
     label: 'Search',
     icon: (
-      <svg className="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="11" cy="11" r="8" />
         <path d="m21 21-4.3-4.3" />
       </svg>
@@ -48,7 +48,7 @@ const NAV_ITEMS = [
     href: '/reading',
     label: 'Reading',
     icon: (
-      <svg className="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
         <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
       </svg>
@@ -58,7 +58,7 @@ const NAV_ITEMS = [
     href: '/digest',
     label: 'Digest',
     icon: (
-      <svg className="h-4 w-4 sm:h-5 sm:w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
         <polyline points="14 2 14 8 20 8" />
         <line x1="16" y1="13" x2="8" y2="13" />
@@ -96,7 +96,7 @@ export function Nav() {
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '2px',
+    gap: '4px',
     padding: '8px 0',
     textDecoration: 'none',
   };
@@ -116,7 +116,7 @@ export function Nav() {
               }}
             >
               {item.icon}
-              <span style={{ fontSize: '8px', fontWeight: 500 }}>{item.label}</span>
+              <span style={{ fontSize: '10px', fontWeight: 500 }}>{item.label}</span>
             </Link>
           );
         })}
