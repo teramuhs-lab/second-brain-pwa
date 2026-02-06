@@ -301,12 +301,7 @@ body::after {
    NAV BAR
    ============================================ */
 
-.nav-glass {
-  background: rgba(10, 10, 15, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid var(--border-subtle);
-}
+/* Nav styles moved to inline in Nav.tsx for reliability */
 
 .nav-item {
   color: var(--text-muted);
