@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { ReadingItem } from '@/lib/types';
+import { ReadingSummaryCard } from '@/components/ReadingSummaryCard';
 
 // Fetch ideas with source URL from Notion
 async function fetchReadingItems(): Promise<ReadingItem[]> {
@@ -214,14 +215,10 @@ export default function ReadingPage() {
                 </button>
               </div>
 
-              {/* Expanded content */}
-              {expandedId === item.id && item.raw_insight && (
+              {/* Expanded content - Use rich ReadingSummaryCard */}
+              {expandedId === item.id && (
                 <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-4">
-                  <div className="prose prose-sm prose-invert max-w-none">
-                    <div className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-secondary)]">
-                      {item.raw_insight}
-                    </div>
-                  </div>
+                  <ReadingSummaryCard item={item} />
 
                   {/* Actions */}
                   <div className="mt-4 flex items-center gap-2">
@@ -230,7 +227,7 @@ export default function ReadingPage() {
                         href={item.source}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 rounded-lg bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-deep)] hover:text-[var(--text-primary)]"
+                        className="flex items-center gap-1.5 rounded-lg bg-[#10b981] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#059669]"
                       >
                         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" strokeLinecap="round" strokeLinejoin="round"/>

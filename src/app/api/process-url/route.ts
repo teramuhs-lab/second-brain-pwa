@@ -255,25 +255,43 @@ async function extractContent(url: string, urlType: UrlType): Promise<{
   };
 }
 
-// Rich summary structure like Recall AI
+// Ultra-detailed summary structure - complete knowledge extraction
 interface RichSummary {
   one_liner: string;
   tldr: string;
+  full_summary: string;  // Comprehensive 500-800 word summary
   main_ideas: Array<{
     title: string;
     explanation: string;
+    details: string[];  // Bullet points with specifics
   }>;
   key_takeaways: string[];
   notable_quotes: string[];
+  statistics_and_data: string[];  // All numbers, stats, data points
+  examples_and_cases: string[];   // Case studies, examples mentioned
+  frameworks_and_models: Array<{  // Systems, methodologies, frameworks
+    name: string;
+    description: string;
+    steps?: string[];
+  }>;
+  tools_and_resources: string[];  // Tools, apps, resources mentioned
+  definitions: Array<{            // Key terms explained
+    term: string;
+    definition: string;
+  }>;
   action_items: string[];
   questions_to_consider: string[];
   related_topics: string[];
+  timestamps?: Array<{            // For videos - chapter markers
+    time: string;
+    topic: string;
+  }>;
   category: string;
   complexity: 'Beginner' | 'Intermediate' | 'Advanced';
   content_type: string;
 }
 
-// Generate comprehensive summary with OpenAI (Recall AI style)
+// Generate ultra-comprehensive summary with OpenAI
 async function generateSummary(
   title: string,
   content: string,
@@ -282,9 +300,15 @@ async function generateSummary(
   const defaultSummary: RichSummary = {
     one_liner: 'AI summary unavailable',
     tldr: content.slice(0, 300),
+    full_summary: content.slice(0, 800),
     main_ideas: [],
     key_takeaways: [],
     notable_quotes: [],
+    statistics_and_data: [],
+    examples_and_cases: [],
+    frameworks_and_models: [],
+    tools_and_resources: [],
+    definitions: [],
     action_items: [],
     questions_to_consider: [],
     related_topics: [],
@@ -299,59 +323,110 @@ async function generateSummary(
 
   const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
   const contentType = urlType === 'youtube' ? 'video' : 'article';
+  const isVideo = urlType === 'youtube';
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     temperature: 0.3,
-    max_tokens: 2500,
+    max_tokens: 6000,
     messages: [
       {
         role: 'system',
-        content: `You are an expert knowledge curator creating detailed, Recall AI-style summaries for a personal Second Brain system. Your summaries should be comprehensive, actionable, and help the user truly understand and retain the content. Extract maximum value from the source material.`
+        content: `You are an expert knowledge curator creating EXHAUSTIVE summaries for a personal Second Brain. Your goal is to extract EVERY piece of valuable information so the user NEVER needs to read/watch the original content. Be thorough, specific, and detailed. Include all numbers, names, examples, and specifics mentioned.`
       },
       {
         role: 'user',
-        content: `Create an extremely detailed summary of this ${contentType} for a personal knowledge base. Extract every valuable insight.
+        content: `Create an EXHAUSTIVELY DETAILED summary of this ${contentType}. Extract EVERYTHING valuable - the user should never need to view the original.
 
 TITLE: ${title}
 
 CONTENT:
 ${content}
 
-Generate a comprehensive analysis with ALL of the following sections:
+Generate a COMPREHENSIVE analysis with ALL sections below. Be SPECIFIC - include actual names, numbers, examples, not generic statements:
 
-1. **one_liner**: A compelling 1-sentence hook that captures the core insight (make it memorable)
+1. **one_liner**: A compelling 1-sentence hook that captures the core insight
 
-2. **tldr**: A 3-4 sentence executive summary covering the main thesis, why it matters, and the key conclusion
+2. **tldr**: 4-5 sentence executive summary - thesis, key points, conclusion
 
-3. **main_ideas**: 3-5 main concepts/ideas, each with:
-   - "title": Short descriptive title (3-6 words)
-   - "explanation": 2-3 sentence deep explanation of this idea
+3. **full_summary**: A COMPLETE 500-800 word summary that covers EVERYTHING important. Write it as if explaining the entire content to someone who will never see the original. Include:
+   - The main argument/thesis
+   - All supporting points with specifics
+   - Any methodology or process described
+   - Key examples mentioned
+   - The conclusion and implications
+   Structure with paragraphs, be thorough.
 
-4. **key_takeaways**: 5-7 specific, actionable bullet points the reader should remember. Be specific, not generic.
+4. **main_ideas**: 4-6 main concepts, each with:
+   - "title": Descriptive title (3-8 words)
+   - "explanation": 3-4 sentence thorough explanation
+   - "details": Array of 2-4 specific bullet points with details/examples
 
-5. **notable_quotes**: 2-4 direct quotes or paraphrased key statements from the content (include the most impactful/memorable lines)
+5. **key_takeaways**: 7-10 specific, memorable points. Be precise with names/numbers.
 
-6. **action_items**: 3-5 specific actions the reader could take based on this content. Make them concrete and implementable.
+6. **notable_quotes**: 3-5 direct quotes or key statements (most impactful lines)
 
-7. **questions_to_consider**: 2-3 thought-provoking questions for further reflection or research
+7. **statistics_and_data**: ALL numbers, percentages, data points, research findings mentioned (e.g., "85% of users...", "$50M revenue", "3x improvement")
 
-8. **related_topics**: 4-6 related concepts, tools, or topics to explore further
+8. **examples_and_cases**: ALL examples, case studies, stories, or real-world applications mentioned with specifics
 
-9. **category**: One of: Business, Tech, Life, Creative
+9. **frameworks_and_models**: Any systems, methodologies, frameworks, or models presented:
+   - "name": Name of the framework
+   - "description": What it is/does
+   - "steps": Array of steps if it's a process (optional)
 
-10. **complexity**: One of: Beginner, Intermediate, Advanced (based on content depth)
+10. **tools_and_resources**: ALL tools, apps, books, websites, or resources mentioned by name
 
-Output STRICT JSON (no markdown, just raw JSON):
+11. **definitions**: Key terms or concepts that are defined or explained:
+    - "term": The term
+    - "definition": Clear explanation
+
+12. **action_items**: 5-10 EXHAUSTIVELY DETAILED action items. Each MUST be a COMPLETE, SELF-CONTAINED GUIDE (100-300 words) the user can follow WITHOUT the original content.
+
+    CRITICAL - Include ALL specifics from the content:
+    - EXERCISE routine: Full workout with sets, reps, rest times, form cues, breathing
+    - DIET plan: Complete meal plan with portions, timing, specific foods, prep instructions
+    - RECIPE: ALL ingredients with exact quantities and full step-by-step cooking instructions
+    - SYSTEM/PROCESS: Every step with specific details, examples, and edge cases
+    - ADVICE: Complete reasoning, real examples, and step-by-step implementation
+
+    Structure each action as a complete mini-guide:
+    - What: The specific action to take
+    - How: Complete step-by-step with ALL details mentioned in content
+    - Specifics: Exact numbers, quantities, durations, techniques, ingredients
+    - Tips: Pro tips, variations, common mistakes to avoid
+    - Result: What success looks like
+
+    Example for fitness: "Build morning mobility routine (15 min): Start with Cat-Cow stretches 60 seconds - inhale arching, exhale rounding. Move to World's Greatest Stretch - 5 reps each side, hold 3 seconds at each position. Add 90/90 hip stretches 45 seconds per side. Finish with 10 wall slides keeping lower back against wall. Do immediately upon waking. Tip: Set alarm 15 min earlier first week. Mistake to avoid: rushing - prioritize feeling each stretch."
+
+    Example for cooking: "Make garlic butter sauce: Melt 4 tbsp unsalted butter over medium-low heat. Add 6 minced garlic cloves, cook 1-2 min until fragrant (NOT brown). Remove from heat, add 2 tbsp fresh lemon juice, 1/4 cup chopped parsley, 1/2 tsp red pepper flakes, 1/2 tsp salt. Should be pourable - if thick, add 1 tbsp warm water. Store refrigerated up to 5 days. Warning: garlic burns quickly, watch heat."
+
+13. **questions_to_consider**: 3-4 thought-provoking questions for reflection
+
+14. **related_topics**: 5-8 related concepts, fields, or topics to explore
+
+${isVideo ? '15. **timestamps**: If chapter markers or timestamps are mentioned, extract them:\n    - "time": The timestamp (e.g., "02:15")\n    - "topic": What is discussed at that point' : ''}
+
+16. **category**: One of: Business, Tech, Life, Creative
+
+17. **complexity**: One of: Beginner, Intermediate, Advanced
+
+Output STRICT JSON (no markdown):
 {
   "one_liner": "...",
   "tldr": "...",
-  "main_ideas": [{"title": "...", "explanation": "..."}, ...],
-  "key_takeaways": ["...", "...", ...],
+  "full_summary": "...",
+  "main_ideas": [{"title": "...", "explanation": "...", "details": ["...", "..."]}, ...],
+  "key_takeaways": ["...", ...],
   "notable_quotes": ["...", ...],
+  "statistics_and_data": ["...", ...],
+  "examples_and_cases": ["...", ...],
+  "frameworks_and_models": [{"name": "...", "description": "...", "steps": ["...", ...]}],
+  "tools_and_resources": ["...", ...],
+  "definitions": [{"term": "...", "definition": "..."}],
   "action_items": ["...", ...],
   "questions_to_consider": ["...", ...],
-  "related_topics": ["...", ...],
+  "related_topics": ["...", ...]${isVideo ? ',\n  "timestamps": [{"time": "...", "topic": "..."}]' : ''},
   "category": "Tech",
   "complexity": "Intermediate"
 }`
@@ -369,12 +444,33 @@ Output STRICT JSON (no markdown, just raw JSON):
       return {
         one_liner: parsed.one_liner || defaultSummary.one_liner,
         tldr: parsed.tldr || defaultSummary.tldr,
-        main_ideas: parsed.main_ideas || [],
+        full_summary: parsed.full_summary || defaultSummary.full_summary,
+        main_ideas: (parsed.main_ideas || []).map((idea: { title?: string; explanation?: string; details?: string[] }) => ({
+          title: idea.title || '',
+          explanation: idea.explanation || '',
+          details: idea.details || [],
+        })),
         key_takeaways: parsed.key_takeaways || [],
         notable_quotes: parsed.notable_quotes || [],
+        statistics_and_data: parsed.statistics_and_data || [],
+        examples_and_cases: parsed.examples_and_cases || [],
+        frameworks_and_models: (parsed.frameworks_and_models || []).map((fw: { name?: string; description?: string; steps?: string[] }) => ({
+          name: fw.name || '',
+          description: fw.description || '',
+          steps: fw.steps || [],
+        })),
+        tools_and_resources: parsed.tools_and_resources || [],
+        definitions: (parsed.definitions || []).map((def: { term?: string; definition?: string }) => ({
+          term: def.term || '',
+          definition: def.definition || '',
+        })),
         action_items: parsed.action_items || [],
         questions_to_consider: parsed.questions_to_consider || [],
         related_topics: parsed.related_topics || [],
+        timestamps: isVideo ? (parsed.timestamps || []).map((ts: { time?: string; topic?: string }) => ({
+          time: ts.time || '',
+          topic: ts.topic || '',
+        })) : undefined,
         category: parsed.category || 'Tech',
         complexity: parsed.complexity || 'Intermediate',
         content_type: contentType === 'video' ? 'Video' : 'Article',
@@ -404,11 +500,17 @@ async function createNotionIdea(data: {
   // TL;DR
   sections.push(`## TL;DR\n${data.summary.tldr}`);
 
-  // Main Ideas
+  // Full Summary
+  if (data.summary.full_summary) {
+    sections.push(`## Full Summary\n${data.summary.full_summary}`);
+  }
+
+  // Main Ideas with details
   if (data.summary.main_ideas.length > 0) {
-    sections.push(`## Main Ideas\n${data.summary.main_ideas.map(idea =>
-      `### ${idea.title}\n${idea.explanation}`
-    ).join('\n\n')}`);
+    sections.push(`## Main Ideas\n${data.summary.main_ideas.map(idea => {
+      const details = idea.details?.length > 0 ? `\n${idea.details.map(d => `  - ${d}`).join('\n')}` : '';
+      return `### ${idea.title}\n${idea.explanation}${details}`;
+    }).join('\n\n')}`);
   }
 
   // Key Takeaways
@@ -416,9 +518,42 @@ async function createNotionIdea(data: {
     sections.push(`## Key Takeaways\n${data.summary.key_takeaways.map(t => `- ${t}`).join('\n')}`);
   }
 
+  // Statistics & Data
+  if (data.summary.statistics_and_data?.length > 0) {
+    sections.push(`## Statistics & Data\n${data.summary.statistics_and_data.map(s => `- 📊 ${s}`).join('\n')}`);
+  }
+
+  // Examples & Cases
+  if (data.summary.examples_and_cases?.length > 0) {
+    sections.push(`## Examples & Case Studies\n${data.summary.examples_and_cases.map(e => `- ${e}`).join('\n')}`);
+  }
+
+  // Frameworks & Models
+  if (data.summary.frameworks_and_models?.length > 0) {
+    sections.push(`## Frameworks & Models\n${data.summary.frameworks_and_models.map(fw => {
+      const steps = fw.steps && fw.steps.length > 0 ? `\n${fw.steps.map((s, i) => `  ${i + 1}. ${s}`).join('\n')}` : '';
+      return `### ${fw.name}\n${fw.description}${steps}`;
+    }).join('\n\n')}`);
+  }
+
+  // Tools & Resources
+  if (data.summary.tools_and_resources?.length > 0) {
+    sections.push(`## Tools & Resources\n${data.summary.tools_and_resources.map(t => `- 🔧 ${t}`).join('\n')}`);
+  }
+
+  // Definitions
+  if (data.summary.definitions?.length > 0) {
+    sections.push(`## Key Definitions\n${data.summary.definitions.map(d => `**${d.term}**: ${d.definition}`).join('\n\n')}`);
+  }
+
   // Notable Quotes
   if (data.summary.notable_quotes.length > 0) {
     sections.push(`## Notable Quotes\n${data.summary.notable_quotes.map(q => `> "${q}"`).join('\n\n')}`);
+  }
+
+  // Timestamps (for videos)
+  if (data.summary.timestamps && data.summary.timestamps.length > 0) {
+    sections.push(`## Timestamps\n${data.summary.timestamps.map(ts => `- **${ts.time}** - ${ts.topic}`).join('\n')}`);
   }
 
   // Action Items
@@ -428,7 +563,7 @@ async function createNotionIdea(data: {
 
   // Questions to Consider
   if (data.summary.questions_to_consider.length > 0) {
-    sections.push(`## Questions to Consider\n${data.summary.questions_to_consider.map(q => `- ${q}`).join('\n')}`);
+    sections.push(`## Questions to Consider\n${data.summary.questions_to_consider.map(q => `- ❓ ${q}`).join('\n')}`);
   }
 
   // Related Topics
@@ -439,6 +574,9 @@ async function createNotionIdea(data: {
   sections.push(`---\n*Source: ${data.url}*\n*Complexity: ${data.summary.complexity}*`);
 
   const rawInsight = sections.join('\n\n');
+
+  // Store structured JSON for rich rendering in Reading page
+  const structuredJson = JSON.stringify(data.summary);
 
   const response = await fetch('https://api.notion.com/v1/pages', {
     method: 'POST',
@@ -469,6 +607,22 @@ async function createNotionIdea(data: {
           select: { name: 'Spark' },
         },
       },
+      // Store full structured summary as JSON code block for rich rendering
+      children: [
+        {
+          object: 'block',
+          type: 'code',
+          code: {
+            language: 'json',
+            rich_text: [
+              {
+                type: 'text',
+                text: { content: structuredJson.slice(0, 2000) }
+              }
+            ]
+          }
+        }
+      ]
     }),
   });
 
@@ -530,7 +684,7 @@ export async function POST(request: NextRequest) {
       summary: summary,
     });
 
-    // Return rich result (Recall AI style)
+    // Return ultra-detailed result
     return NextResponse.json({
       status: 'success',
       url,
@@ -539,15 +693,22 @@ export async function POST(request: NextRequest) {
       author: extracted.author,
       readTime: extracted.readTime,
       page_id: pageId,
-      // Rich summary fields
+      // Ultra-detailed summary fields
       one_liner: summary.one_liner,
       tldr: summary.tldr,
+      full_summary: summary.full_summary,
       main_ideas: summary.main_ideas,
       key_takeaways: summary.key_takeaways,
       notable_quotes: summary.notable_quotes,
+      statistics_and_data: summary.statistics_and_data,
+      examples_and_cases: summary.examples_and_cases,
+      frameworks_and_models: summary.frameworks_and_models,
+      tools_and_resources: summary.tools_and_resources,
+      definitions: summary.definitions,
       action_items: summary.action_items,
       questions_to_consider: summary.questions_to_consider,
       related_topics: summary.related_topics,
+      timestamps: summary.timestamps,
       category: summary.category,
       complexity: summary.complexity,
       content_type: summary.content_type,

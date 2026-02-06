@@ -195,13 +195,33 @@ export type DigestResponse = DailyDigestResponse | WeeklyDigestResponse;
 export type UrlType = 'youtube' | 'twitter' | 'article' | 'generic';
 export type Complexity = 'Beginner' | 'Intermediate' | 'Advanced';
 
-// Main idea structure for rich summaries
+// Main idea structure with details
 export interface MainIdea {
   title: string;
   explanation: string;
+  details?: string[];
 }
 
-// Rich summary result (Recall AI style)
+// Framework/model structure
+export interface Framework {
+  name: string;
+  description: string;
+  steps?: string[];
+}
+
+// Definition structure
+export interface Definition {
+  term: string;
+  definition: string;
+}
+
+// Timestamp structure (for videos)
+export interface Timestamp {
+  time: string;
+  topic: string;
+}
+
+// Ultra-detailed summary result
 export interface UrlProcessResult {
   status: 'success' | 'error';
   url: string;
@@ -211,21 +231,52 @@ export interface UrlProcessResult {
   readTime?: string;
   page_id?: string;
   error?: string;
-  // Rich summary fields
+  // Core summary
   one_liner: string;
   tldr?: string;
+  full_summary?: string;
+  // Detailed analysis
   main_ideas?: MainIdea[];
   key_takeaways?: string[];
   notable_quotes?: string[];
+  statistics_and_data?: string[];
+  examples_and_cases?: string[];
+  frameworks_and_models?: Framework[];
+  tools_and_resources?: string[];
+  definitions?: Definition[];
+  // Action-oriented
   action_items?: string[];
   questions_to_consider?: string[];
   related_topics?: string[];
+  // Video-specific
+  timestamps?: Timestamp[];
+  // Metadata
   category: string;
   complexity?: Complexity;
   content_type?: string;
   // Legacy fields for backwards compatibility
-  full_summary?: string;
   key_points?: string[];
+}
+
+// Structured summary for rich rendering
+export interface StructuredSummary {
+  tldr?: string;
+  full_summary?: string;
+  main_ideas?: MainIdea[];
+  key_takeaways?: string[];
+  statistics_and_data?: string[];
+  examples_and_cases?: string[];
+  frameworks_and_models?: Framework[];
+  tools_and_resources?: string[];
+  definitions?: Definition[];
+  notable_quotes?: string[];
+  action_items?: string[];
+  questions_to_consider?: string[];
+  related_topics?: string[];
+  timestamps?: Timestamp[];
+  complexity?: Complexity;
+  category?: string;
+  content_type?: string;
 }
 
 // Reading page - Idea with source
@@ -239,6 +290,8 @@ export interface ReadingItem {
   maturity: string;
   created_time: string;
   last_edited_time: string;
+  // Structured summary for rich rendering (fetched from page blocks)
+  structured_summary?: StructuredSummary;
 }
 
 export const SNOOZE_PRESETS: SnoozePreset[] = [

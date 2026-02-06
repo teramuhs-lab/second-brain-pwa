@@ -75,17 +75,64 @@ export async function GET() {
     const data = await response.json();
     const pages: NotionPage[] = data.results || [];
 
-    // Transform to ReadingItem format
-    const items = pages.map((page) => ({
-      id: page.id,
-      title: page.properties.Title?.title?.[0]?.plain_text || 'Untitled',
-      one_liner: page.properties['One-liner']?.rich_text?.[0]?.plain_text || '',
-      raw_insight: page.properties['Raw Insight']?.rich_text?.[0]?.plain_text || '',
-      source: page.properties.Source?.url || '',
-      category: page.properties.Category?.select?.name || 'Tech',
-      maturity: page.properties.Maturity?.select?.name || 'Spark',
-      created_time: page.created_time,
-      last_edited_time: page.last_edited_time,
+    // Transform to ReadingItem format with structured summary from page blocks
+    const items = await Promise.all(pages.map(async (page) => {
+      const baseItem: {
+        id: string;
+        title: string;
+        one_liner: string;
+        raw_insight: string;
+        source: string;
+        category: string;
+        maturity: string;
+        created_time: string;
+        last_edited_time: string;
+        structured_summary?: Record<string, unknown>;
+      } = {
+        id: page.id,
+        title: page.properties.Title?.title?.[0]?.plain_text || 'Untitled',
+        one_liner: page.properties['One-liner']?.rich_text?.[0]?.plain_text || '',
+        raw_insight: page.properties['Raw Insight']?.rich_text?.[0]?.plain_text || '',
+        source: page.properties.Source?.url || '',
+        category: page.properties.Category?.select?.name || 'Tech',
+        maturity: page.properties.Maturity?.select?.name || 'Spark',
+        created_time: page.created_time,
+        last_edited_time: page.last_edited_time,
+      };
+
+      // Fetch page blocks to get structured summary JSON
+      try {
+        const blocksRes = await fetch(
+          `https://api.notion.com/v1/blocks/${page.id}/children?page_size=10`,
+          {
+            headers: {
+              'Authorization': `Bearer ${NOTION_API_KEY}`,
+              'Notion-Version': '2022-06-28',
+            },
+          }
+        );
+
+        if (blocksRes.ok) {
+          const blocks = await blocksRes.json();
+          // Find JSON code block containing structured summary
+          const codeBlock = blocks.results?.find(
+            (b: { type: string; code?: { language: string; rich_text: Array<{ plain_text: string }> } }) =>
+              b.type === 'code' && b.code?.language === 'json'
+          );
+
+          if (codeBlock?.code?.rich_text?.[0]?.plain_text) {
+            try {
+              baseItem.structured_summary = JSON.parse(codeBlock.code.rich_text[0].plain_text);
+            } catch {
+              // JSON parse failed, will use raw_insight fallback
+            }
+          }
+        }
+      } catch {
+        // Block fetch failed, will use raw_insight fallback
+      }
+
+      return baseItem;
     }));
 
     return NextResponse.json({
