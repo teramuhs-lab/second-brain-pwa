@@ -222,8 +222,18 @@ export function TaskList() {
   };
 
   const handleDelete = async (taskId: string) => {
-    await deleteEntry(taskId);
-    await loadTasks();
+    try {
+      const result = await deleteEntry(taskId);
+      if (result.status === 'error') {
+        console.error('Delete failed:', result.error);
+        alert(`Failed to delete: ${result.error}`);
+        return;
+      }
+      await loadTasks();
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('Failed to delete task. Please try again.');
+    }
   };
 
   // Filter tasks by completion status
