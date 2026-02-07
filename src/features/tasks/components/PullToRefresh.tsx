@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, ReactNode } from 'react';
+import { useState, useRef, useEffect, ReactNode } from 'react';
 
 interface PullToRefreshProps {
   onRefresh: () => Promise<void>;
@@ -13,66 +13,90 @@ export function PullToRefresh({ onRefresh, children }: PullToRefreshProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const startY = useRef(0);
   const isPulling = useRef(false);
-  const currentDistance = useRef(0); // Track actual distance for threshold check
+  const currentDistance = useRef(0);
 
-  const threshold = 60; // Lowered for easier triggering
+  const threshold = 60;
   const maxPull = 100;
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (isRefreshing) return;
+  // Use refs to store latest values for event handlers
+  const isRefreshingRef = useRef(isRefreshing);
+  const onRefreshRef = useRef(onRefresh);
 
-    // Check window scroll position (page scrolls, not container)
-    const isAtTop = window.scrollY <= 0;
-
-    if (isAtTop) {
-      startY.current = e.touches[0].clientY;
-      isPulling.current = true;
-    }
+  useEffect(() => {
+    isRefreshingRef.current = isRefreshing;
   }, [isRefreshing]);
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!isPulling.current || isRefreshing) return;
+  useEffect(() => {
+    onRefreshRef.current = onRefresh;
+  }, [onRefresh]);
 
-    const currentY = e.touches[0].clientY;
-    const diff = currentY - startY.current;
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
 
-    if (diff > 0 && window.scrollY <= 0) {
-      // Prevent browser's default pull-to-refresh
-      e.preventDefault();
-      // Apply resistance to pull
-      const distance = Math.min(diff * 0.5, maxPull);
-      currentDistance.current = distance; // Track in ref for accurate threshold check
-      setPullDistance(distance);
-    } else if (diff < 0) {
-      // User is scrolling down, stop the pull
-      isPulling.current = false;
-      currentDistance.current = 0;
-      setPullDistance(0);
-    }
-  }, [isRefreshing]);
+    const handleTouchStart = (e: TouchEvent) => {
+      if (isRefreshingRef.current) return;
 
-  const handleTouchEnd = useCallback(async () => {
-    if (!isPulling.current) return;
-    isPulling.current = false;
+      const isAtTop = window.scrollY <= 0;
+      if (isAtTop) {
+        startY.current = e.touches[0].clientY;
+        isPulling.current = true;
+      }
+    };
 
-    // Use ref for accurate threshold check (state may be stale)
-    const reachedThreshold = currentDistance.current >= threshold;
-    currentDistance.current = 0;
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isPulling.current || isRefreshingRef.current) return;
 
-    if (reachedThreshold && !isRefreshing) {
-      setIsRefreshing(true);
-      setPullDistance(40); // Keep indicator visible during refresh
+      const currentY = e.touches[0].clientY;
+      const diff = currentY - startY.current;
 
-      try {
-        await onRefresh();
-      } finally {
-        setIsRefreshing(false);
+      if (diff > 0 && window.scrollY <= 0) {
+        e.preventDefault(); // This works because we use { passive: false }
+        const distance = Math.min(diff * 0.5, maxPull);
+        currentDistance.current = distance;
+        setPullDistance(distance);
+      } else if (diff < 0) {
+        isPulling.current = false;
+        currentDistance.current = 0;
         setPullDistance(0);
       }
-    } else {
-      setPullDistance(0);
-    }
-  }, [isRefreshing, onRefresh]);
+    };
+
+    const handleTouchEnd = async () => {
+      if (!isPulling.current) return;
+      isPulling.current = false;
+
+      const reachedThreshold = currentDistance.current >= threshold;
+      currentDistance.current = 0;
+
+      if (reachedThreshold && !isRefreshingRef.current) {
+        isRefreshingRef.current = true;
+        setIsRefreshing(true);
+        setPullDistance(40);
+
+        try {
+          await onRefreshRef.current();
+        } finally {
+          isRefreshingRef.current = false;
+          setIsRefreshing(false);
+          setPullDistance(0);
+        }
+      } else {
+        setPullDistance(0);
+      }
+    };
+
+    // Add event listeners with { passive: false } to allow preventDefault
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, []);
 
   const progress = Math.min(pullDistance / threshold, 1);
 
@@ -82,10 +106,7 @@ export function PullToRefresh({ onRefresh, children }: PullToRefreshProps) {
     <div
       ref={containerRef}
       className="relative overflow-visible"
-      style={{ touchAction: pullDistance > 0 ? 'none' : 'auto' }}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
+      style={{ touchAction: pullDistance > 0 ? 'none' : 'pan-y' }}
     >
       {/* Pull indicator - fixed at top center */}
       {pullDistance > 0 && (
