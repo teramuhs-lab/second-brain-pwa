@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 const NOTION_API_KEY = process.env.NOTION_API_KEY;
 
 async function archiveNotionPage(pageId: string) {
+  console.log(`[Delete] Archiving page: ${pageId}`);
+
   const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
     method: 'PATCH',
     headers: {
@@ -14,8 +16,19 @@ async function archiveNotionPage(pageId: string) {
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Notion API error: ${response.status} - ${error}`);
+    const errorData = await response.json().catch(() => null);
+    console.error(`[Delete] Notion API error (${response.status}):`, errorData);
+
+    // Provide user-friendly error messages
+    if (response.status === 404) {
+      throw new Error('Page not found. It may have already been deleted.');
+    } else if (response.status === 401) {
+      throw new Error('Notion API authentication failed. Check your API key.');
+    } else if (response.status === 403) {
+      throw new Error('Permission denied. The Notion integration may not have access to this page.');
+    } else {
+      throw new Error(errorData?.message || `Notion API error: ${response.status}`);
+    }
   }
 
   return response.json();
@@ -39,6 +52,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    console.log(`[Delete] Received request for page_id: ${page_id}`);
 
     await archiveNotionPage(page_id);
 
