@@ -205,23 +205,118 @@ function extractText(properties: Record<string, unknown>): string {
   for (const [, value] of Object.entries(properties)) {
     const prop = value as Record<string, unknown>;
 
+    // Title field
     if (prop.title && Array.isArray(prop.title)) {
       const titleArray = prop.title as Array<{ plain_text: string }>;
       texts.push(titleArray.map(t => t.plain_text).join(''));
     }
 
+    // Rich text fields (Notes, Context, Next Action, etc.)
     if (prop.rich_text && Array.isArray(prop.rich_text)) {
       const richTextArray = prop.rich_text as Array<{ plain_text: string }>;
       texts.push(richTextArray.map(t => t.plain_text).join(''));
     }
 
+    // Select fields (Status, Priority, Category, etc.)
     if (prop.select && typeof prop.select === 'object') {
       const select = prop.select as { name?: string };
       if (select.name) texts.push(select.name);
     }
+
+    // Multi-select fields
+    if (prop.multi_select && Array.isArray(prop.multi_select)) {
+      const multiSelect = prop.multi_select as Array<{ name: string }>;
+      texts.push(multiSelect.map(s => s.name).join(' '));
+    }
+
+    // Relation fields - extract linked page titles
+    if (prop.relation && Array.isArray(prop.relation)) {
+      // Relations contain page IDs, but we can't fetch titles synchronously
+      // Instead, we'll search for relation text in other fields
+    }
+
+    // People fields (mentions)
+    if (prop.people && Array.isArray(prop.people)) {
+      const people = prop.people as Array<{ name?: string }>;
+      texts.push(people.map(p => p.name || '').filter(Boolean).join(' '));
+    }
+
+    // Email fields
+    if (prop.email && typeof prop.email === 'string') {
+      texts.push(prop.email);
+    }
+
+    // Phone number fields
+    if (prop.phone_number && typeof prop.phone_number === 'string') {
+      texts.push(prop.phone_number);
+    }
+
+    // URL fields
+    if (prop.url && typeof prop.url === 'string') {
+      texts.push(prop.url);
+    }
+
+    // Number fields (convert to string for searchability)
+    if (prop.number !== undefined && prop.number !== null && typeof prop.number === 'number') {
+      texts.push(String(prop.number));
+    }
+
+    // Checkbox (include label if checked)
+    // Skipped - not useful for text search
+
+    // Date fields - include for date-related searches
+    if (prop.date && typeof prop.date === 'object') {
+      const date = prop.date as { start?: string; end?: string };
+      if (date.start) texts.push(date.start);
+      if (date.end) texts.push(date.end);
+    }
   }
 
   return texts.join(' ');
+}
+
+// Extract relation page IDs from properties
+function extractRelationIds(properties: Record<string, unknown>): string[] {
+  const ids: string[] = [];
+  for (const [, value] of Object.entries(properties)) {
+    const prop = value as Record<string, unknown>;
+    if (prop.relation && Array.isArray(prop.relation)) {
+      const relations = prop.relation as Array<{ id: string }>;
+      ids.push(...relations.map(r => r.id));
+    }
+  }
+  return ids;
+}
+
+// Batch fetch page titles for relation lookup
+async function fetchPageTitles(pageIds: string[]): Promise<Map<string, string>> {
+  const titles = new Map<string, string>();
+  if (pageIds.length === 0) return titles;
+
+  // Fetch in batches of 10 to avoid rate limits
+  const batchSize = 10;
+  for (let i = 0; i < Math.min(pageIds.length, 30); i += batchSize) {
+    const batch = pageIds.slice(i, i + batchSize);
+    const promises = batch.map(async (id) => {
+      try {
+        const response = await fetch(`https://api.notion.com/v1/pages/${id}`, {
+          headers: {
+            Authorization: `Bearer ${NOTION_API_KEY}`,
+            'Notion-Version': '2022-06-28',
+          },
+        });
+        if (response.ok) {
+          const page = await response.json();
+          const title = extractTitle(page.properties);
+          titles.set(id, title);
+        }
+      } catch {
+        // Skip failed fetches
+      }
+    });
+    await Promise.all(promises);
+  }
+  return titles;
 }
 
 // ============================================
@@ -308,14 +403,39 @@ async function searchDatabase(
   const response = await notionRequest(`/databases/${databaseId}/query`, 'POST', queryBody);
   const pages = response.results as NotionPage[];
 
+  // Phase 1: Collect all relation IDs across all pages
+  const allRelationIds: Set<string> = new Set();
+  const pageRelationMap = new Map<string, string[]>();
+
+  for (const page of pages) {
+    const relationIds = extractRelationIds(page.properties);
+    if (relationIds.length > 0) {
+      pageRelationMap.set(page.id, relationIds);
+      relationIds.forEach(id => allRelationIds.add(id));
+    }
+  }
+
+  // Phase 2: Batch fetch all relation titles (for searchability)
+  const relationTitles = await fetchPageTitles(Array.from(allRelationIds));
+
   const results: SearchResult[] = [];
 
   for (const page of pages) {
     const title = extractTitle(page.properties);
     const fullText = extractText(page.properties);
     const source = extractSource(page.properties);
-    // Include source URL in searchable text (helps find entries by URL content)
-    const searchableText = source ? `${fullText} ${source}` : fullText;
+
+    // Get relation titles for this page
+    const pageRelationIds = pageRelationMap.get(page.id) || [];
+    const relatedTitles = pageRelationIds
+      .map(id => relationTitles.get(id))
+      .filter((t): t is string => !!t);
+
+    // Include source URL and relation titles in searchable text
+    let searchableText = fullText;
+    if (source) searchableText += ' ' + source;
+    if (relatedTitles.length > 0) searchableText += ' ' + relatedTitles.join(' ');
+
     const lastEdited = new Date(page.last_edited_time);
 
     // Apply date filter
@@ -328,15 +448,23 @@ async function searchDatabase(
     // Calculate relevance score
     let relevanceScore = 0;
 
-    // Keyword matching (basic) - includes source URL in search
+    // Keyword matching - includes source URL and relation titles in search
     const lowerText = searchableText.toLowerCase();
     const lowerTitle = title.toLowerCase();
     for (const term of parsedQuery.searchTerms) {
-      if (lowerTitle.includes(term.toLowerCase())) {
+      const lowerTerm = term.toLowerCase();
+      if (lowerTitle.includes(lowerTerm)) {
         relevanceScore += 10; // Title match is worth more
       }
-      if (lowerText.includes(term.toLowerCase())) {
+      if (lowerText.includes(lowerTerm)) {
         relevanceScore += 5;
+      }
+      // Bonus for relation match (e.g., finding "Kaleb" in a linked Person)
+      for (const relTitle of relatedTitles) {
+        if (relTitle.toLowerCase().includes(lowerTerm)) {
+          relevanceScore += 7; // Relation match is valuable
+          break;
+        }
       }
     }
 
@@ -369,6 +497,7 @@ async function searchDatabase(
         snippet: fullText.slice(0, 200),
         relevanceScore,
         source,
+        relatedTo: relatedTitles.length > 0 ? relatedTitles : undefined,
       });
     }
   }
