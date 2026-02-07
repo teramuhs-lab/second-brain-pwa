@@ -4,6 +4,7 @@ import { useState, useCallback, KeyboardEvent, useEffect } from 'react';
 import { searchEntries, markDone, snoozeEntry, updateEntry } from '@/lib/api';
 import type { SearchResult, Category, SavedSearch } from '@/lib/types';
 import { useToast } from '@/components/Toast';
+import { SearchDetailModal } from '@/components/SearchDetailModal';
 
 const CATEGORY_COLORS: Record<Category, string> = {
   People: 'from-blue-500 to-cyan-500',
@@ -94,10 +95,11 @@ function useSavedSearches() {
 interface SearchResultCardProps {
   result: SearchResult;
   onAction: () => void;
+  onViewDetails: () => void;
   formatDate: (date: string) => string;
 }
 
-function SearchResultCard({ result, onAction, formatDate }: SearchResultCardProps) {
+function SearchResultCard({ result, onAction, onViewDetails, formatDate }: SearchResultCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { showSuccess, showError } = useToast();
@@ -160,7 +162,22 @@ function SearchResultCard({ result, onAction, formatDate }: SearchResultCardProp
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
-              <h3 className="font-medium text-[var(--text-primary)] leading-tight">{result.title}</h3>
+              <div className="flex items-center gap-1.5">
+                <h3 className="font-medium text-[var(--text-primary)] leading-tight">{result.title}</h3>
+                {result.source && (
+                  <svg
+                    className="h-3.5 w-3.5 text-[var(--accent-cyan)] shrink-0"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    title="Has source link"
+                  >
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </div>
               {result.relevanceScore && result.relevanceScore > 15 && (
                 <span className="shrink-0 text-xs text-[var(--accent-cyan)]">✨ Best match</span>
               )}
@@ -215,6 +232,20 @@ function SearchResultCard({ result, onAction, formatDate }: SearchResultCardProp
           {result.snippet && (
             <p className="text-sm text-[var(--text-muted)] mb-4 line-clamp-2">{result.snippet}</p>
           )}
+
+          {/* View Details button */}
+          <div className="mb-4">
+            <button
+              onClick={(e) => { e.stopPropagation(); onViewDetails(); }}
+              className="w-full flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[var(--accent-purple)] to-[var(--accent-cyan)] px-3 py-2 text-sm font-medium text-white transition-all hover:opacity-90"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              View Details
+            </button>
+          </div>
 
           <div className="flex flex-wrap gap-2">
             {/* Complete action */}
@@ -282,6 +313,7 @@ export default function SearchPage() {
   const [hasSearched, setHasSearched] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveName, setSaveName] = useState('');
+  const [selectedEntry, setSelectedEntry] = useState<{ id: string; category: Category } | null>(null);
 
   const { savedSearches, saveSearch, removeSearch } = useSavedSearches();
   const { showSuccess } = useToast();
@@ -550,6 +582,7 @@ export default function SearchPage() {
                   key={result.id}
                   result={result}
                   onAction={() => handleSearch()}
+                  onViewDetails={() => setSelectedEntry({ id: result.id, category: result.category })}
                   formatDate={formatDate}
                 />
               ))}
@@ -563,6 +596,15 @@ export default function SearchPage() {
           )}
         </div>
       )}
+
+      {/* Detail Modal */}
+      <SearchDetailModal
+        isOpen={!!selectedEntry}
+        onClose={() => setSelectedEntry(null)}
+        entryId={selectedEntry?.id || ''}
+        entryCategory={selectedEntry?.category || 'Admin'}
+        onAction={() => handleSearch()}
+      />
     </div>
   );
 }

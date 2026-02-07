@@ -37,6 +37,7 @@ export interface SearchResult {
   snippet?: string;
   relevanceScore?: number;
   relatedTo?: string[];
+  source?: string;
 }
 
 export interface ParsedQueryFilters {

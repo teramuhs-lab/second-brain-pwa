@@ -31,6 +31,7 @@ interface SearchResult {
   snippet?: string;
   relevanceScore?: number;
   relatedTo?: string[];
+  source?: string;
 }
 
 interface ParsedQuery {
@@ -193,6 +194,11 @@ function extractDate(properties: Record<string, unknown>, field: string): string
   return dateProp?.date?.start;
 }
 
+function extractSource(properties: Record<string, unknown>): string | undefined {
+  const sourceProp = properties['Source'] as { url?: string } | undefined;
+  return sourceProp?.url || undefined;
+}
+
 function extractText(properties: Record<string, unknown>): string {
   const texts: string[] = [];
 
@@ -307,6 +313,9 @@ async function searchDatabase(
   for (const page of pages) {
     const title = extractTitle(page.properties);
     const fullText = extractText(page.properties);
+    const source = extractSource(page.properties);
+    // Include source URL in searchable text (helps find entries by URL content)
+    const searchableText = source ? `${fullText} ${source}` : fullText;
     const lastEdited = new Date(page.last_edited_time);
 
     // Apply date filter
@@ -319,8 +328,8 @@ async function searchDatabase(
     // Calculate relevance score
     let relevanceScore = 0;
 
-    // Keyword matching (basic)
-    const lowerText = fullText.toLowerCase();
+    // Keyword matching (basic) - includes source URL in search
+    const lowerText = searchableText.toLowerCase();
     const lowerTitle = title.toLowerCase();
     for (const term of parsedQuery.searchTerms) {
       if (lowerTitle.includes(term.toLowerCase())) {
@@ -359,6 +368,7 @@ async function searchDatabase(
         lastEdited: page.last_edited_time,
         snippet: fullText.slice(0, 200),
         relevanceScore,
+        source,
       });
     }
   }

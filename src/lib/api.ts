@@ -319,6 +319,32 @@ export async function processUrl(url: string): Promise<UrlProcessResult> {
   }
 }
 
+// Fetch a single entry's full details
+export async function fetchEntry(entryId: string): Promise<{
+  status: 'success' | 'error';
+  entry?: Record<string, unknown>;
+  error?: string;
+}> {
+  try {
+    const response = await fetch(`/api/entry/${entryId}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Fetch entry error:', error);
+    return {
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
 // URL detection helper
 export function isUrl(text: string): boolean {
   const urlRegex = /https?:\/\/[^\s]+/;
