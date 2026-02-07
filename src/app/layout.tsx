@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Nav } from '@/components/Nav';
+import { Providers } from '@/components/Providers';
 import './globals.css';
 
 export const viewport: Viewport = {
@@ -42,10 +43,12 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
       </head>
       <body>
-        <div className="min-h-screen pb-24">
-          {children}
-        </div>
-        <Nav />
+        <Providers>
+          <div className="min-h-screen pb-24">
+            {children}
+          </div>
+          <Nav />
+        </Providers>
       </body>
     </html>
   );

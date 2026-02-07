@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { TaskCard } from './TaskCard';
+import { PullToRefresh } from './PullToRefresh';
+import { TaskListSkeleton } from './Skeleton';
 import { fetchEntries, markDone, snoozeEntry, updateEntry, recategorize, deleteEntry } from '@/lib/api';
+import { useToast } from './Toast';
 import type { Entry, Category } from '@/lib/types';
 
 // Map database names to Category type
@@ -179,19 +182,23 @@ export function TaskList() {
   const [tasks, setTasks] = useState<Entry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showCompleted, setShowCompleted] = useState(false);
+  const { showError } = useToast();
 
-  const loadTasks = useCallback(async () => {
-    setIsLoading(true);
+  const loadTasks = useCallback(async (showLoadingState = true) => {
+    if (showLoadingState) setIsLoading(true);
     try {
-      // Fetch all items (no status filter) so we can show both active and completed
       const data = await fetchEntries(activeTab);
       setTasks(data);
     } catch (error) {
       console.error('Failed to load tasks:', error);
     } finally {
-      setIsLoading(false);
+      if (showLoadingState) setIsLoading(false);
     }
   }, [activeTab]);
+
+  const handleRefresh = useCallback(async () => {
+    await loadTasks(false);
+  }, [loadTasks]);
 
   useEffect(() => {
     loadTasks();
@@ -225,14 +232,12 @@ export function TaskList() {
     try {
       const result = await deleteEntry(taskId);
       if (result.status === 'error') {
-        console.error('Delete failed:', result.error);
-        alert(`Failed to delete: ${result.error}`);
+        showError(result.error || 'Failed to delete');
         return;
       }
       await loadTasks();
     } catch (error) {
-      console.error('Delete error:', error);
-      alert('Failed to delete task. Please try again.');
+      showError('Failed to delete task. Please try again.');
     }
   };
 
@@ -275,8 +280,9 @@ export function TaskList() {
   }, [groupedTasks]);
 
   return (
-    <div className="space-y-6">
-      {/* Tab navigation */}
+    <PullToRefresh onRefresh={handleRefresh}>
+      <div className="space-y-6">
+        {/* Tab navigation */}
       <div className="flex gap-2 overflow-x-auto pb-2">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.id;
@@ -337,10 +343,7 @@ export function TaskList() {
 
       {/* Task list */}
       {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-12">
-          <div className="spinner mb-3" />
-          <span className="text-sm text-[var(--text-muted)]">Loading...</span>
-        </div>
+        <TaskListSkeleton count={5} />
       ) : displayTasks.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl bg-[var(--bg-elevated)] py-12">
           <span className="text-4xl mb-3">{showCompleted ? '🎉' : '✨'}</span>
@@ -417,12 +420,13 @@ export function TaskList() {
         </div>
       )}
 
-      {/* Swipe hint */}
-      {!showCompleted && activeTasks.length > 0 && (
-        <p className="text-center text-xs text-[var(--text-muted)]">
-          Tap task to expand • Swipe right to complete
-        </p>
-      )}
-    </div>
+        {/* Swipe hint */}
+        {!showCompleted && activeTasks.length > 0 && (
+          <p className="text-center text-xs text-[var(--text-muted)]">
+            Pull down to refresh • Tap to expand • Swipe to complete
+          </p>
+        )}
+      </div>
+    </PullToRefresh>
   );
 }

@@ -3,8 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 const NOTION_API_KEY = process.env.NOTION_API_KEY;
 
 async function archiveNotionPage(pageId: string) {
-  console.log(`[Delete] Archiving page: ${pageId}`);
-
   const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
     method: 'PATCH',
     headers: {
@@ -52,8 +50,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    console.log(`[Delete] Received request for page_id: ${page_id}`);
 
     await archiveNotionPage(page_id);
 
