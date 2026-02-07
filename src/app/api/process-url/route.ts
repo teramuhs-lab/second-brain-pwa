@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import OpenAI from 'openai';
+import { YoutubeTranscript } from 'youtube-transcript';
 
 // Environment variables
 const NOTION_API_KEY = process.env.NOTION_API_KEY;
@@ -40,6 +41,52 @@ function extractYouTubeId(url: string): string | null {
     if (match) return match[1];
   }
   return null;
+}
+
+// Format seconds to MM:SS
+function formatTimestamp(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Fetch YouTube transcript with timestamps
+interface TranscriptSegment {
+  text: string;
+  offset: number;
+  duration: number;
+}
+
+async function fetchYouTubeTranscript(videoId: string): Promise<{
+  fullText: string;
+  segments: TranscriptSegment[];
+  formattedTranscript: string;
+} | null> {
+  try {
+    const transcriptData = await YoutubeTranscript.fetchTranscript(videoId);
+
+    if (!transcriptData || transcriptData.length === 0) {
+      return null;
+    }
+
+    const segments: TranscriptSegment[] = transcriptData.map(item => ({
+      text: item.text,
+      offset: item.offset / 1000, // Convert ms to seconds
+      duration: item.duration / 1000,
+    }));
+
+    const fullText = segments.map(s => s.text).join(' ');
+
+    // Format transcript with timestamps for AI analysis
+    const formattedTranscript = segments.map(s =>
+      `[${formatTimestamp(s.offset)}] ${s.text}`
+    ).join('\n');
+
+    return { fullText, segments, formattedTranscript };
+  } catch (error) {
+    console.error('Failed to fetch YouTube transcript:', error);
+    return null;
+  }
 }
 
 // Fetch YouTube video info via oEmbed API
@@ -172,13 +219,27 @@ async function extractContent(url: string, urlType: UrlType): Promise<{
       finalAuthor = youtubeInfo.author || author;
     }
 
-    // Extract the actual video description from page's embedded JSON
-    const videoDescription = fetchYouTubeDescription(html);
-    if (videoDescription && videoDescription.length > 20) {
-      content = videoDescription;
-    } else {
-      // Fallback: try meta description (less reliable but better than nothing)
-      content = description || 'No video description available.';
+    // Try to fetch full transcript with timestamps (best for detailed summaries)
+    const videoId = extractYouTubeId(url);
+    let hasTranscript = false;
+
+    if (videoId) {
+      const transcript = await fetchYouTubeTranscript(videoId);
+      if (transcript && transcript.fullText.length > 100) {
+        // Use the formatted transcript with timestamps
+        content = `FULL VIDEO TRANSCRIPT WITH TIMESTAMPS:\n\n${transcript.formattedTranscript}`;
+        hasTranscript = true;
+      }
+    }
+
+    // Fallback to description if no transcript available
+    if (!hasTranscript) {
+      const videoDescription = fetchYouTubeDescription(html);
+      if (videoDescription && videoDescription.length > 20) {
+        content = videoDescription;
+      } else {
+        content = description || 'No video description available.';
+      }
     }
 
     // Add context about this being a video
@@ -405,7 +466,18 @@ Generate a COMPREHENSIVE analysis with ALL sections below. Be SPECIFIC - include
 
 14. **related_topics**: 5-8 related concepts, fields, or topics to explore
 
-${isVideo ? '15. **timestamps**: If chapter markers or timestamps are mentioned, extract them:\n    - "time": The timestamp (e.g., "02:15")\n    - "topic": What is discussed at that point' : ''}
+${isVideo ? `15. **timestamps**: CRITICAL FOR VIDEOS - Create a comprehensive chapter breakdown from the transcript:
+    - Analyze the transcript and identify 8-15 distinct topic sections/chapters
+    - Each timestamp should mark where a NEW topic or subtopic begins
+    - "time": The timestamp in MM:SS format (e.g., "02:15", "15:30")
+    - "topic": A descriptive title for what is discussed (5-10 words, like a chapter title)
+
+    Guidelines for timestamps:
+    - First timestamp should be "0:00" for the intro/opening
+    - Look for topic transitions, new questions, new concepts being introduced
+    - Space them logically (not too close together, not too far apart)
+    - Make topic titles descriptive and specific (e.g., "Why Tesla Will 10x in 5 Years" not just "Tesla")
+    - Include timestamps for key moments like important reveals, actionable advice, conclusions` : ''}
 
 16. **category**: One of: Business, Tech, Life, Creative
 
