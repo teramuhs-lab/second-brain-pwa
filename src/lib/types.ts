@@ -30,14 +30,33 @@ export interface SearchResult {
   title: string;
   category: Category;
   status?: string;
+  priority?: string;
+  dueDate?: string;
   created: string;
   lastEdited: string;
   snippet?: string;
+  relevanceScore?: number;
+  relatedTo?: string[];
+}
+
+export interface ParsedQueryFilters {
+  categories?: string[];
+  statuses?: string[];
+  dateRange?: { start?: string; end?: string };
+  priority?: string[];
+  hasRelation?: string;
+}
+
+export interface ParsedQuery {
+  searchTerms: string[];
+  intent: 'search' | 'question' | 'action' | 'filter';
+  filters: ParsedQueryFilters;
 }
 
 export interface SearchResponse {
   status: 'success' | 'error';
   query: string;
+  parsedQuery?: ParsedQuery;
   total: number;
   summary?: string;
   results: SearchResult[];
@@ -48,6 +67,14 @@ export interface SearchResponse {
     Admin: number;
   };
   error?: string;
+}
+
+export interface SavedSearch {
+  id: string;
+  name: string;
+  query: string;
+  icon?: string;
+  createdAt: string;
 }
 
 // Simplified Entry type from API (n8n returns this format)
