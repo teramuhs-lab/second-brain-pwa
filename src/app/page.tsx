@@ -1,17 +1,27 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { CaptureInput } from '@/components/CaptureInput';
 import { ConfirmCard } from '@/components/ConfirmCard';
 import { LinkSummaryCard } from '@/components/LinkSummaryCard';
 import { captureThought, recategorize, processUrl, sendSlackNotification } from '@/lib/api';
 import type { Category, ConfirmationState, UrlProcessResult } from '@/lib/types';
 
+// Progress stages for URL processing
+const URL_STAGES = [
+  'Detecting content type...',
+  'Fetching transcript...',
+  'Analyzing with AI...',
+  'Creating Notion entry...',
+];
+
 export default function CapturePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [confirmation, setConfirmation] = useState<ConfirmationState | null>(null);
   const [urlResult, setUrlResult] = useState<UrlProcessResult | null>(null);
   const [lastText, setLastText] = useState('');
+  const [processingStage, setProcessingStage] = useState(0);
+  const [isUrlProcessing, setIsUrlProcessing] = useState(false);
 
   const handleCapture = useCallback(async (text: string) => {
     setIsLoading(true);
@@ -48,13 +58,22 @@ export default function CapturePage() {
 
   const handleUrlCapture = useCallback(async (url: string) => {
     setIsLoading(true);
+    setIsUrlProcessing(true);
     setConfirmation(null);
     setUrlResult(null);
+    setProcessingStage(0);
+
+    // Start progress animation
+    const stageInterval = setInterval(() => {
+      setProcessingStage((prev) => Math.min(prev + 1, URL_STAGES.length - 1));
+    }, 8000);
 
     try {
       const result = await processUrl(url);
+      clearInterval(stageInterval);
       setUrlResult(result);
     } catch (error) {
+      clearInterval(stageInterval);
       console.error('URL capture failed:', error);
       setUrlResult({
         status: 'error',
@@ -69,6 +88,8 @@ export default function CapturePage() {
       });
     } finally {
       setIsLoading(false);
+      setIsUrlProcessing(false);
+      setProcessingStage(0);
     }
   }, []);
 
@@ -144,6 +165,41 @@ export default function CapturePage() {
           isLoading={isLoading}
         />
       </div>
+
+      {/* URL Processing Progress */}
+      {isUrlProcessing && !urlResult && (
+        <div className="mb-8 animate-fade-up glass-card p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20">
+              <svg className="h-5 w-5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-[var(--text-primary)]">Processing Link</h3>
+              <p className="text-xs text-[var(--text-muted)]">This may take 30-60 seconds for videos</p>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="h-2 w-full rounded-full bg-[var(--bg-elevated)] overflow-hidden mb-3">
+            <div
+              className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-1000 ease-out"
+              style={{ width: `${((processingStage + 1) / URL_STAGES.length) * 100}%` }}
+            />
+          </div>
+
+          {/* Stage text */}
+          <div className="flex items-center gap-2 text-sm text-emerald-400">
+            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            {URL_STAGES[processingStage]}
+          </div>
+        </div>
+      )}
 
       {/* URL Summary Card */}
       {urlResult && (

@@ -219,6 +219,27 @@ export async function askAgent(
   }
 }
 
+// Clear chat history
+export async function clearChat(sessionId: string): Promise<{ status: 'success' | 'error'; message?: string; error?: string }> {
+  try {
+    const response = await fetch(`${ENDPOINTS.agent}?session_id=${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Clear chat error:', error);
+    return {
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Failed to clear chat',
+    };
+  }
+}
+
 // Delete (archive) an entry
 export async function deleteEntry(pageId: string): Promise<{ status: 'deleted' | 'error'; error?: string }> {
   try {

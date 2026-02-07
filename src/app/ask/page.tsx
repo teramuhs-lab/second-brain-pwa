@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { ChatMessage, TypingIndicator } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
-import { askAgent } from '@/lib/api';
+import { askAgent, clearChat } from '@/lib/api';
 
 interface Message {
   id: string;
@@ -59,7 +59,10 @@ export default function AskPage() {
     }
   }, []);
 
-  const handleNewChat = useCallback(() => {
+  const handleNewChat = useCallback(async () => {
+    // Clear from backend (Notion + in-memory)
+    await clearChat(sessionIdRef.current);
+    // Reset local state
     setMessages([]);
     sessionIdRef.current = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   }, []);
