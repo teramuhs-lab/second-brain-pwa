@@ -7,6 +7,25 @@ interface ReadingSummaryCardProps {
   item: ReadingItem;
 }
 
+// Helper to safely render items that might be strings or objects
+function formatItem(item: unknown): string {
+  if (typeof item === 'string') return item;
+  if (typeof item === 'object' && item !== null) {
+    // Handle structured action items with What/How/Specifics/Tips/Result keys
+    const obj = item as Record<string, unknown>;
+    const parts: string[] = [];
+    if (obj.What) parts.push(String(obj.What));
+    if (obj.How) parts.push(`How: ${obj.How}`);
+    if (obj.Specifics) parts.push(`Details: ${obj.Specifics}`);
+    if (obj.Tips) parts.push(`Tips: ${obj.Tips}`);
+    if (obj.Result) parts.push(`Expected result: ${obj.Result}`);
+    if (parts.length > 0) return parts.join('\n');
+    // Fallback: stringify the object
+    return JSON.stringify(item);
+  }
+  return String(item);
+}
+
 export function ReadingSummaryCard({ item }: ReadingSummaryCardProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(['tldr', 'full_summary', 'main_ideas', 'takeaways', 'actions'])
@@ -256,7 +275,7 @@ export function ReadingSummaryCard({ item }: ReadingSummaryCardProps) {
               {summary.action_items.map((action, i) => (
                 <li key={i} className="flex items-start gap-2 text-sm text-[var(--text-secondary)]">
                   <span className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border border-[#10b981]/50 text-[#10b981] text-xs">☐</span>
-                  <span className="leading-relaxed whitespace-pre-wrap">{action}</span>
+                  <span className="leading-relaxed whitespace-pre-wrap">{formatItem(action)}</span>
                 </li>
               ))}
             </ul>
