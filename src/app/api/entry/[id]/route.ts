@@ -121,6 +121,7 @@ export async function GET(
       entry.source = getUrl(props.Source);
       entry.category = getSelect(props.Category);
       entry.maturity = getSelect(props.Maturity);
+      entry.notes = getText(props.Notes);
     } else if (entryType === 'Admin') {
       entry.due_date = getDate(props['Due Date']);
       entry.category = getSelect(props.Category);
@@ -136,6 +137,7 @@ export async function GET(
       entry.context = getText(props.Context);
       entry.last_contact = getDate(props['Last Contact']);
       entry.next_followup = getDate(props['Next Follow-up']);
+      entry.notes = getText(props.Notes);
     }
 
     // For Ideas, also fetch page blocks to get structured summary JSON

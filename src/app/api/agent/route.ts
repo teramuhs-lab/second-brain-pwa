@@ -696,7 +696,12 @@ export async function POST(request: NextRequest) {
 
     // Load conversation - try Notion first, fall back to in-memory
     let history: ConversationMessage[];
-    const notionHistory = await loadConversationFromNotion(sessionId);
+    let notionHistory: ConversationMessage[] | null = null;
+    try {
+      notionHistory = await loadConversationFromNotion(sessionId);
+    } catch (notionError) {
+      console.error('Failed to load from Notion, using in-memory:', notionError);
+    }
 
     if (notionHistory && notionHistory.length > 0) {
       // Restore from Notion (add system prompt at start)
@@ -817,10 +822,15 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Agent error:', error);
+    // Return detailed error for debugging
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    console.error('Full error details:', { message: errorMessage, stack: errorStack });
     return NextResponse.json(
       {
         status: 'error',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
+        details: process.env.NODE_ENV === 'development' ? errorStack : undefined,
       },
       { status: 500 }
     );

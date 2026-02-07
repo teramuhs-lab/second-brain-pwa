@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ReadingItem } from '@/lib/types';
 import { ReadingSummaryCard } from '@/components/ReadingSummaryCard';
+import { PullToRefresh } from '@/features/tasks/components/PullToRefresh';
 
 // Fetch ideas with source URL from Notion
 async function fetchReadingItems(): Promise<ReadingItem[]> {
@@ -23,12 +24,16 @@ export default function ReadingPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'today' | 'week'>('all');
 
-  const loadItems = useCallback(async () => {
-    setIsLoading(true);
+  const loadItems = useCallback(async (showLoadingState = true) => {
+    if (showLoadingState) setIsLoading(true);
     const data = await fetchReadingItems();
     setItems(data);
-    setIsLoading(false);
+    if (showLoadingState) setIsLoading(false);
   }, []);
+
+  const handleRefresh = useCallback(async () => {
+    await loadItems(false);
+  }, [loadItems]);
 
   useEffect(() => {
     loadItems();
@@ -91,6 +96,7 @@ export default function ReadingPage() {
   };
 
   return (
+    <PullToRefresh onRefresh={handleRefresh}>
     <div className="mx-auto max-w-2xl px-5 pb-24 pt-6">
       {/* Header */}
       <header className="mb-6">
@@ -105,7 +111,7 @@ export default function ReadingPage() {
             </div>
           </div>
           <button
-            onClick={loadItems}
+            onClick={() => loadItems()}
             disabled={isLoading}
             className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--bg-elevated)] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)] disabled:opacity-50"
           >
@@ -245,5 +251,6 @@ export default function ReadingPage() {
         </div>
       )}
     </div>
+    </PullToRefresh>
   );
 }

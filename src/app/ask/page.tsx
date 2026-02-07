@@ -1,22 +1,29 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { ChatMessage, TypingIndicator } from '@/components/ChatMessage';
+import { ChatMessage, ResearchingIndicator } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
-import { askAgent, clearChat } from '@/lib/api';
+import { askResearchAgent, clearChat } from '@/lib/api';
+import type { ResearchCitation, ResearchStep } from '@/lib/types';
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   toolsUsed?: string[];
+  // Research-specific fields
+  citations?: ResearchCitation[];
+  researchSteps?: ResearchStep[];
+  expertDomain?: string;
+  iterations?: number;
 }
 
 export default function AskPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [researchStatus, setResearchStatus] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const sessionIdRef = useRef(`chat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`);
+  const sessionIdRef = useRef(`research-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -32,11 +39,12 @@ export default function AskPage() {
     };
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
+    setResearchStatus('Analyzing your question...');
 
     try {
-      const response = await askAgent(text, sessionIdRef.current);
+      const response = await askResearchAgent(text, sessionIdRef.current);
 
-      // Add assistant message
+      // Add assistant message with research data
       const assistantMessage: Message = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
@@ -44,6 +52,10 @@ export default function AskPage() {
           ? response.response
           : response.error || 'Something went wrong. Please try again.',
         toolsUsed: response.tools_used,
+        citations: response.citations,
+        researchSteps: response.research_steps,
+        expertDomain: response.expert_domain,
+        iterations: response.iterations,
       };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
@@ -56,15 +68,16 @@ export default function AskPage() {
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+      setResearchStatus('');
     }
   }, []);
 
   const handleNewChat = useCallback(async () => {
-    // Clear from backend (Notion + in-memory)
+    // Clear from backend
     await clearChat(sessionIdRef.current);
     // Reset local state
     setMessages([]);
-    sessionIdRef.current = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    sessionIdRef.current = `research-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   }, []);
 
   return (
@@ -77,7 +90,10 @@ export default function AskPage() {
               <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z" />
             </svg>
           </div>
-          <h1 className="text-xl font-semibold text-[var(--text-primary)]">Ask Your Brain</h1>
+          <div>
+            <h1 className="text-xl font-semibold text-[var(--text-primary)]">Ask Your Brain</h1>
+            <p className="text-xs text-[var(--text-muted)]">Research Agent</p>
+          </div>
         </div>
 
         {messages.length > 0 && (
@@ -105,18 +121,19 @@ export default function AskPage() {
               </svg>
             </div>
             <p className="mb-2 text-lg font-medium text-[var(--text-primary)]">
-              What can I help with?
+              Research Agent Ready
             </p>
-            <p className="max-w-[280px] text-sm text-[var(--text-muted)]">
-              Ask about your tasks, projects, contacts, or anything in your second brain.
+            <p className="max-w-[300px] text-sm text-[var(--text-muted)]">
+              I&apos;ll search your Second Brain and the web, then answer with verified sources.
             </p>
 
             {/* Example prompts */}
             <div className="mt-6 space-y-2">
               {[
-                'What tasks do I have today?',
-                'Tell me about my projects',
-                'Who should I follow up with?',
+                'What do you think about learning n8n?',
+                'Compare my active projects by priority',
+                'Who should I reconnect with this week?',
+                'What business ideas have I captured recently?',
               ].map((prompt) => (
                 <button
                   key={prompt}
@@ -137,9 +154,12 @@ export default function AskPage() {
                 role={message.role}
                 content={message.content}
                 toolsUsed={message.toolsUsed}
+                citations={message.citations}
+                researchSteps={message.researchSteps}
+                expertDomain={message.expertDomain}
               />
             ))}
-            {isLoading && <TypingIndicator />}
+            {isLoading && <ResearchingIndicator status={researchStatus} />}
             <div ref={messagesEndRef} />
           </div>
         )}

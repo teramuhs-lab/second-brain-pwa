@@ -1,4 +1,4 @@
-import type { CaptureResponse, UpdateResponse, Category, Entry, SearchResponse, AgentResponse, DigestResponse, DailyDigestResponse, WeeklyDigestResponse, UrlProcessResult } from './types';
+import type { CaptureResponse, UpdateResponse, Category, Entry, SearchResponse, AgentResponse, DigestResponse, DailyDigestResponse, WeeklyDigestResponse, UrlProcessResult, ResearchAgentResponse } from './types';
 
 // n8n webhook base URL - configure in environment
 const N8N_BASE_URL = process.env.NEXT_PUBLIC_N8N_URL || 'https://n8n.srv1236227.hstgr.cloud';
@@ -215,6 +215,38 @@ export async function askAgent(
       status: 'error',
       response: '',
       error: error instanceof Error ? error.message : 'Failed to reach agent',
+    };
+  }
+}
+
+// Ask the Research Agent (deep research with citations)
+export async function askResearchAgent(
+  message: string,
+  sessionId: string
+): Promise<ResearchAgentResponse> {
+  try {
+    const response = await fetch('/api/agent/research', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, session_id: sessionId }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Research agent error:', error);
+    return {
+      status: 'error',
+      response: '',
+      citations: [],
+      research_steps: [],
+      expert_domain: 'research',
+      tools_used: [],
+      iterations: 0,
+      error: error instanceof Error ? error.message : 'Failed to reach research agent',
     };
   }
 }

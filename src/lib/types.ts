@@ -127,6 +127,7 @@ export interface PeopleEntry extends BaseEntry {
   last_contact?: string;
   next_followup?: string;
   status: PeopleStatus;
+  notes?: string;
 }
 
 export interface IdeaEntry extends BaseEntry {
@@ -137,6 +138,7 @@ export interface IdeaEntry extends BaseEntry {
   source?: string;
   category: string;
   maturity: IdeaMaturity;
+  notes?: string;
 }
 
 export type DetailedEntry = AdminEntry | ProjectEntry | PeopleEntry | IdeaEntry;
@@ -321,6 +323,36 @@ export interface ReadingItem {
   last_edited_time: string;
   // Structured summary for rich rendering (fetched from page blocks)
   structured_summary?: StructuredSummary;
+}
+
+// Research Agent types
+export type ExpertDomain = 'tech' | 'business' | 'investment' | 'personal' | 'research';
+
+export interface ResearchCitation {
+  number: number;
+  type: 'notion' | 'web';
+  id?: string;
+  url?: string;
+  title: string;
+  snippet?: string;
+  database?: string;
+}
+
+export interface ResearchStep {
+  type: 'thinking' | 'tool_call' | 'observation' | 'decision';
+  content: string;
+  tool?: string;
+}
+
+export interface ResearchAgentResponse {
+  status: 'success' | 'error';
+  response: string;
+  citations: ResearchCitation[];
+  research_steps: ResearchStep[];
+  expert_domain: ExpertDomain;
+  tools_used: string[];
+  iterations: number;
+  error?: string;
 }
 
 export const SNOOZE_PRESETS: SnoozePreset[] = [
