@@ -4,6 +4,27 @@ import { useState, useEffect, useCallback, ReactNode } from 'react';
 import { fetchDigest } from '@/lib/api';
 import type { DailyDigestResponse, WeeklyDigestResponse } from '@/lib/types';
 
+interface StaleItem {
+  id: string;
+  title: string;
+  category: string;
+  status?: string;
+  daysSinceEdit: number;
+  lastEdited: string;
+}
+
+interface InsightsData {
+  status: string;
+  staleItems: StaleItem[];
+  weeklyStats: {
+    totalCaptures: number;
+    byCategory: Record<string, number>;
+    completedTasks: number;
+    newIdeas: number;
+  };
+  aiInsights: string | null;
+}
+
 // Helper to format inline markdown (bold, etc.)
 function formatInlineMarkdown(text: string): ReactNode[] {
   const parts = text.split(/\*\*(.*?)\*\*/g);
@@ -81,9 +102,10 @@ function DigestSkeleton() {
 }
 
 export default function DigestPage() {
-  const [activeTab, setActiveTab] = useState<'daily' | 'weekly'>('daily');
+  const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'insights'>('daily');
   const [dailyDigest, setDailyDigest] = useState<DailyDigestResponse | null>(null);
   const [weeklyDigest, setWeeklyDigest] = useState<WeeklyDigestResponse | null>(null);
+  const [insights, setInsights] = useState<InsightsData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,21 +136,47 @@ export default function DigestPage() {
     }
   }, []);
 
+  const loadInsights = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/insights');
+      const data = await response.json();
+      if (data.status === 'error') {
+        setError(data.error || 'Failed to load insights');
+      } else {
+        setInsights(data);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   // Load digest on mount and tab change
   useEffect(() => {
-    const currentDigest = activeTab === 'daily' ? dailyDigest : weeklyDigest;
-    if (!currentDigest) {
-      loadDigest(activeTab);
+    if (activeTab === 'insights') {
+      if (!insights) loadInsights();
+    } else {
+      const currentDigest = activeTab === 'daily' ? dailyDigest : weeklyDigest;
+      if (!currentDigest) {
+        loadDigest(activeTab);
+      }
     }
-  }, [activeTab, dailyDigest, weeklyDigest, loadDigest]);
+  }, [activeTab, dailyDigest, weeklyDigest, insights, loadDigest, loadInsights]);
 
   const handleRefresh = () => {
     if (activeTab === 'daily') {
       setDailyDigest(null);
-    } else {
+      loadDigest('daily');
+    } else if (activeTab === 'weekly') {
       setWeeklyDigest(null);
+      loadDigest('weekly');
+    } else {
+      setInsights(null);
+      loadInsights();
     }
-    loadDigest(activeTab);
   };
 
   const currentDigest = activeTab === 'daily' ? dailyDigest : weeklyDigest;
@@ -187,7 +235,7 @@ export default function DigestPage() {
               : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
           }`}
         >
-          Daily Briefing
+          Daily
         </button>
         <button
           onClick={() => setActiveTab('weekly')}
@@ -197,13 +245,23 @@ export default function DigestPage() {
               : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
           }`}
         >
-          Weekly Review
+          Weekly
+        </button>
+        <button
+          onClick={() => setActiveTab('insights')}
+          className={`flex-1 rounded-xl py-3 text-sm font-medium transition-all ${
+            activeTab === 'insights'
+              ? 'bg-[var(--accent-cyan)] text-[var(--bg-deep)]'
+              : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
+          }`}
+        >
+          Insights
         </button>
       </div>
 
       {/* Content */}
       <div className="animate-fade-up delay-2" style={{ opacity: 0 }}>
-        {activeTab === 'daily' ? (
+        {activeTab === 'daily' && (
           <div className="glass-card p-6">
             <div className="flex items-center gap-3 mb-4">
               <span className="text-2xl">☀️</span>
@@ -215,7 +273,6 @@ export default function DigestPage() {
               </div>
             </div>
 
-            {/* Stats badges */}
             {dailyDigest && dailyDigest.status === 'success' && (
               <div className="flex flex-wrap gap-2 mb-4">
                 {dailyDigest.counts.projects > 0 && (
@@ -236,37 +293,32 @@ export default function DigestPage() {
               </div>
             )}
 
-            {/* Loading state */}
             {isLoading && <DigestSkeleton />}
 
-            {/* Error state */}
             {error && !isLoading && (
               <div className="rounded-xl bg-[rgba(239,68,68,0.1)] border border-[rgba(239,68,68,0.2)] p-4 text-center">
                 <p className="text-sm text-[#ef4444] mb-2">{error}</p>
-                <button
-                  onClick={handleRefresh}
-                  className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                >
+                <button onClick={handleRefresh} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]">
                   Try again
                 </button>
               </div>
             )}
 
-            {/* AI Summary */}
             {dailyDigest && dailyDigest.status === 'success' && !isLoading && (
               <div className="rounded-xl bg-[var(--bg-elevated)] p-4">
                 <DigestContent content={dailyDigest.aiSummary} />
               </div>
             )}
 
-            {/* Generated timestamp */}
             {dailyDigest && dailyDigest.status === 'success' && (
               <p className="mt-4 text-center text-xs text-[var(--text-muted)]">
                 Generated {new Date(dailyDigest.generatedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
               </p>
             )}
           </div>
-        ) : (
+        )}
+
+        {activeTab === 'weekly' && (
           <div className="glass-card p-6">
             <div className="flex items-center gap-3 mb-4">
               <span className="text-2xl">📅</span>
@@ -278,7 +330,6 @@ export default function DigestPage() {
               </div>
             </div>
 
-            {/* Stats badges */}
             {weeklyDigest && weeklyDigest.status === 'success' && (
               <div className="flex flex-wrap gap-2 mb-4">
                 {weeklyDigest.counts.completedTasks > 0 && (
@@ -299,34 +350,125 @@ export default function DigestPage() {
               </div>
             )}
 
-            {/* Loading state */}
             {isLoading && <DigestSkeleton />}
 
-            {/* Error state */}
             {error && !isLoading && (
               <div className="rounded-xl bg-[rgba(239,68,68,0.1)] border border-[rgba(239,68,68,0.2)] p-4 text-center">
                 <p className="text-sm text-[#ef4444] mb-2">{error}</p>
-                <button
-                  onClick={handleRefresh}
-                  className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
-                >
+                <button onClick={handleRefresh} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]">
                   Try again
                 </button>
               </div>
             )}
 
-            {/* AI Summary */}
             {weeklyDigest && weeklyDigest.status === 'success' && !isLoading && (
               <div className="rounded-xl bg-[var(--bg-elevated)] p-4">
                 <DigestContent content={weeklyDigest.aiSummary} />
               </div>
             )}
 
-            {/* Generated timestamp */}
             {weeklyDigest && weeklyDigest.status === 'success' && (
               <p className="mt-4 text-center text-xs text-[var(--text-muted)]">
                 Generated {new Date(weeklyDigest.generatedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
               </p>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'insights' && (
+          /* Insights Tab */
+          <div className="space-y-4">
+            {/* AI Insights Card */}
+            <div className="glass-card p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-2xl">🧠</span>
+                <div>
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">AI Insights</h2>
+                  <p className="text-xs text-[var(--text-muted)]">Patterns and observations</p>
+                </div>
+              </div>
+
+              {isLoading && <DigestSkeleton />}
+
+              {error && !isLoading && (
+                <div className="rounded-xl bg-[rgba(239,68,68,0.1)] border border-[rgba(239,68,68,0.2)] p-4 text-center">
+                  <p className="text-sm text-[#ef4444] mb-2">{error}</p>
+                  <button onClick={handleRefresh} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]">
+                    Try again
+                  </button>
+                </div>
+              )}
+
+              {insights && !isLoading && (
+                <>
+                  {/* Weekly Stats */}
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    <span className="rounded-full bg-[rgba(0,212,255,0.15)] px-2.5 py-1 text-xs text-[var(--accent-cyan)]">
+                      {insights.weeklyStats.totalCaptures} captures this week
+                    </span>
+                    <span className="rounded-full bg-[rgba(34,197,94,0.15)] px-2.5 py-1 text-xs text-[#22c55e]">
+                      {insights.weeklyStats.completedTasks} completed
+                    </span>
+                    <span className="rounded-full bg-[rgba(168,85,247,0.15)] px-2.5 py-1 text-xs text-[#a855f7]">
+                      {insights.weeklyStats.newIdeas} new ideas
+                    </span>
+                  </div>
+
+                  {/* Category breakdown */}
+                  <div className="grid grid-cols-4 gap-2 mb-4">
+                    {Object.entries(insights.weeklyStats.byCategory).map(([cat, count]) => (
+                      <div key={cat} className="text-center rounded-lg bg-[var(--bg-elevated)] p-2">
+                        <span className="text-lg block">
+                          {cat === 'People' ? '👤' : cat === 'Projects' ? '🚀' : cat === 'Ideas' ? '💡' : '📋'}
+                        </span>
+                        <span className="text-xs text-[var(--text-muted)]">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* AI Analysis */}
+                  {insights.aiInsights && (
+                    <div className="rounded-xl bg-[var(--bg-elevated)] p-4">
+                      <DigestContent content={insights.aiInsights} />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Stale Items Alert */}
+            {insights && insights.staleItems.length > 0 && (
+              <div className="glass-card p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="text-2xl">⏰</span>
+                  <div>
+                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">Needs Attention</h2>
+                    <p className="text-xs text-[var(--text-muted)]">{insights.staleItems.length} items not touched in 2+ weeks</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {insights.staleItems.slice(0, 5).map((item) => (
+                    <div key={item.id} className="flex items-center justify-between rounded-lg bg-[var(--bg-elevated)] p-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-sm">
+                          {item.category === 'People' ? '👤' : item.category === 'Projects' ? '🚀' : item.category === 'Ideas' ? '💡' : '📋'}
+                        </span>
+                        <span className="text-sm text-[var(--text-primary)] truncate">{item.title}</span>
+                      </div>
+                      <span className="shrink-0 text-xs text-[var(--text-muted)] ml-2">
+                        {item.daysSinceEdit}d ago
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {insights.staleItems.length > 5 && (
+                  <p className="mt-3 text-center text-xs text-[var(--text-muted)]">
+                    +{insights.staleItems.length - 5} more items
+                  </p>
+                )}
+              </div>
             )}
           </div>
         )}

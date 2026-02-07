@@ -9,7 +9,7 @@ const ENDPOINTS = {
   fix: `${N8N_BASE_URL}/webhook/sb-pwa-fix`,
   update: `${N8N_BASE_URL}/webhook/sb-pwa-update`,
   fetch: `${N8N_BASE_URL}/webhook/sb-pwa-fetch`,
-  agent: `${N8N_BASE_URL}/webhook/sb-agent`,
+  agent: '/api/agent', // Local endpoint for better reliability
 };
 
 // Capture a new thought
