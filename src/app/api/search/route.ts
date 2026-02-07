@@ -89,6 +89,8 @@ async function parseNaturalLanguageQuery(query: string, openai: OpenAI): Promise
 
 Parse the user's query and extract structured filters. Today's date is ${todayStr}.
 
+IMPORTANT: For simple keyword searches (like a person's name, project name, or general term), set categories to null to search ALL databases. Only filter to specific categories when the user EXPLICITLY asks for that type.
+
 Output STRICT JSON:
 {
   "searchTerms": ["keyword1", "keyword2"],
@@ -104,7 +106,9 @@ Output STRICT JSON:
 }
 
 Examples:
-- "What did I discuss with Sarah?" → categories: ["People"], searchTerms: ["Sarah"], hasRelation: "Sarah"
+- "Kaleb" → categories: null (search all), searchTerms: ["Kaleb"]
+- "Sarah" → categories: null (search all), searchTerms: ["Sarah"]
+- "Show me the person Sarah" → categories: ["People"], searchTerms: ["Sarah"]
 - "Show urgent tasks due this week" → categories: ["Admin"], statuses: ["Todo"], priority: ["High"], dateRange: this week
 - "Active projects" → categories: ["Projects"], statuses: ["Active"]
 - "Ideas about AI" → categories: ["Ideas"], searchTerms: ["AI"]
