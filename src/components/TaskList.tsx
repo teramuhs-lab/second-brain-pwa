@@ -299,13 +299,9 @@ export function TaskList() {
             >
               <span>{tab.icon}</span>
               <span>{tab.label}</span>
-              {!isLoading && (
-                <span
-                  className={`ml-1 rounded-full px-2 py-0.5 text-xs ${
-                    isActive ? 'bg-white/20' : 'bg-[var(--bg-deep)]'
-                  }`}
-                >
-                  {isActive && urgentCount > 0 ? (
+              {!isLoading && isActive && (
+                <span className="ml-1 rounded-full px-2 py-0.5 text-xs bg-white/20">
+                  {urgentCount > 0 ? (
                     <span className="flex items-center gap-1">
                       <span className="text-red-300">{urgentCount}</span>
                       <span className="opacity-50">/</span>
