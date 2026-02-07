@@ -101,9 +101,10 @@ export async function GET() {
       };
 
       // Fetch page blocks to get structured summary JSON
+      // JSON may be split across multiple code blocks due to Notion's 2000 char limit
       try {
         const blocksRes = await fetch(
-          `https://api.notion.com/v1/blocks/${page.id}/children?page_size=10`,
+          `https://api.notion.com/v1/blocks/${page.id}/children?page_size=20`,
           {
             headers: {
               'Authorization': `Bearer ${NOTION_API_KEY}`,
@@ -114,17 +115,26 @@ export async function GET() {
 
         if (blocksRes.ok) {
           const blocks = await blocksRes.json();
-          // Find JSON code block containing structured summary
-          const codeBlock = blocks.results?.find(
+          // Find ALL JSON code blocks and concatenate them (JSON may be split across multiple blocks)
+          const codeBlocks = blocks.results?.filter(
             (b: { type: string; code?: { language: string; rich_text: Array<{ plain_text: string }> } }) =>
               b.type === 'code' && b.code?.language === 'json'
-          );
+          ) || [];
 
-          if (codeBlock?.code?.rich_text?.[0]?.plain_text) {
-            try {
-              baseItem.structured_summary = JSON.parse(codeBlock.code.rich_text[0].plain_text);
-            } catch {
-              // JSON parse failed, will use raw_insight fallback
+          if (codeBlocks.length > 0) {
+            // Concatenate all JSON code blocks
+            const fullJson = codeBlocks
+              .map((b: { code: { rich_text: Array<{ plain_text: string }> } }) =>
+                b.code?.rich_text?.[0]?.plain_text || ''
+              )
+              .join('');
+
+            if (fullJson) {
+              try {
+                baseItem.structured_summary = JSON.parse(fullJson);
+              } catch {
+                // JSON parse failed, will use raw_insight fallback
+              }
             }
           }
         }

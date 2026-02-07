@@ -648,7 +648,38 @@ async function createNotionIdea(data: {
   const rawInsight = sections.join('\n\n');
 
   // Store structured JSON for rich rendering in Reading page
+  // Notion has a 2000 char limit per text block, so we split the JSON across multiple blocks
   const structuredJson = JSON.stringify(data.summary);
+
+  // Create code blocks for the JSON, splitting if needed (Notion limit is 2000 chars per rich_text)
+  type CodeBlock = {
+    object: 'block';
+    type: 'code';
+    code: {
+      language: 'json';
+      rich_text: Array<{ type: 'text'; text: { content: string } }>;
+    };
+  };
+  const jsonBlocks: CodeBlock[] = [];
+
+  // Split JSON into chunks of 2000 chars max
+  const chunkSize = 2000;
+  for (let i = 0; i < structuredJson.length; i += chunkSize) {
+    const chunk = structuredJson.slice(i, i + chunkSize);
+    jsonBlocks.push({
+      object: 'block',
+      type: 'code',
+      code: {
+        language: 'json',
+        rich_text: [
+          {
+            type: 'text',
+            text: { content: chunk }
+          }
+        ]
+      }
+    });
+  }
 
   const response = await fetch('https://api.notion.com/v1/pages', {
     method: 'POST',
@@ -679,22 +710,8 @@ async function createNotionIdea(data: {
           select: { name: 'Spark' },
         },
       },
-      // Store full structured summary as JSON code block for rich rendering
-      children: [
-        {
-          object: 'block',
-          type: 'code',
-          code: {
-            language: 'json',
-            rich_text: [
-              {
-                type: 'text',
-                text: { content: structuredJson.slice(0, 2000) }
-              }
-            ]
-          }
-        }
-      ]
+      // Store full structured summary as JSON code blocks for rich rendering
+      children: jsonBlocks
     }),
   });
 
