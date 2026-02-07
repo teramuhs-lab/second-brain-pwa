@@ -159,6 +159,12 @@ export async function snoozeEntry(
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   const localDateStr = `${year}-${month}-${day}`;
+
+  // Debug logging
+  console.log('[Snooze] Input date:', date.toString());
+  console.log('[Snooze] Local date string:', localDateStr);
+  console.log('[Snooze] Today local:', new Date().toLocaleDateString());
+
   return updateEntry(pageId, database, { [dateField]: localDateStr });
 }
 

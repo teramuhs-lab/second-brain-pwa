@@ -167,19 +167,32 @@ export function TaskCard({
     setShowDeleteConfirm(false);
   };
 
+  // Parse date string as local time (not UTC)
+  const parseLocalDate = (dateStr: string) => {
+    // "2026-02-07" -> parse as local midnight, not UTC
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  };
+
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return null;
-    const date = new Date(dateStr);
+    const date = parseLocalDate(dateStr);
     const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset to midnight for comparison
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    if (date.toDateString() === today.toDateString()) return 'Today';
-    if (date.toDateString() === tomorrow.toDateString()) return 'Tomorrow';
+    if (date.getTime() === today.getTime()) return 'Today';
+    if (date.getTime() === tomorrow.getTime()) return 'Tomorrow';
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const isOverdue = task.due_date && new Date(task.due_date) < new Date();
+  const isOverdue = task.due_date && (() => {
+    const dueDate = parseLocalDate(task.due_date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return dueDate < today;
+  })();
 
   return (
     <>
