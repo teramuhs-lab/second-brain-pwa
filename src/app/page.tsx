@@ -219,8 +219,8 @@ export default function CapturePage() {
       {/* Quick tips - zen styling */}
       {!confirmation?.show && !urlResult && (
         <div className="animate-fade-up delay-2 pt-8">
-          <p className="text-xs text-[var(--text-muted)]/50 mb-3">Try saying...</p>
-          <div className="space-y-2">
+          <p className="text-sm text-[var(--text-muted)]/60 mb-3">Try saying...</p>
+          <div className="space-y-2.5">
             {[
               'Follow up with Sarah next week',
               'Build landing page for new project',
@@ -229,7 +229,7 @@ export default function CapturePage() {
             ].map((example, i) => (
               <p
                 key={i}
-                className="text-sm text-[var(--text-muted)]/70"
+                className="text-base text-[var(--text-secondary)]/80"
               >
                 &ldquo;{example}&rdquo;
               </p>

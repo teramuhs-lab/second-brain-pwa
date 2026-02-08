@@ -190,7 +190,7 @@ export default function DigestPage() {
             <h1 className="text-xl font-semibold text-[var(--text-primary)]">
               Digest
             </h1>
-            <p className="text-xs text-[var(--text-muted)]/60">
+            <p className="text-sm text-[var(--text-muted)]/70">
               AI-generated summaries
             </p>
           </div>
@@ -237,7 +237,7 @@ export default function DigestPage() {
           <div className="glass-card p-6">
             <div className="mb-4">
               <h2 className="text-lg font-semibold text-[var(--text-primary)]">Daily Briefing</h2>
-              <p className="text-xs text-[var(--text-muted)]/60">
+              <p className="text-sm text-[var(--text-muted)]/70">
                 {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
               </p>
             </div>
@@ -291,7 +291,7 @@ export default function DigestPage() {
           <div className="glass-card p-6">
             <div className="mb-4">
               <h2 className="text-lg font-semibold text-[var(--text-primary)]">Weekly Review</h2>
-              <p className="text-xs text-[var(--text-muted)]/60">
+              <p className="text-sm text-[var(--text-muted)]/70">
                 Week of {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
               </p>
             </div>
@@ -348,7 +348,7 @@ export default function DigestPage() {
             <div className="glass-card p-6">
               <div className="mb-4">
                 <h2 className="text-lg font-semibold text-[var(--text-primary)]">AI Insights</h2>
-                <p className="text-xs text-[var(--text-muted)]/60">Patterns and observations</p>
+                <p className="text-sm text-[var(--text-muted)]/70">Patterns and observations</p>
               </div>
 
               {isLoading && <DigestSkeleton />}
@@ -356,7 +356,7 @@ export default function DigestPage() {
               {error && !isLoading && (
                 <div className="rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-4 text-center">
                   <p className="text-sm text-[var(--text-secondary)] mb-2">{error}</p>
-                  <button onClick={handleRefresh} className="text-xs text-[var(--text-muted)]/60 hover:text-[var(--text-secondary)]">
+                  <button onClick={handleRefresh} className="text-sm text-[var(--text-muted)]/70 hover:text-[var(--text-secondary)]">
                     Try again
                   </button>
                 </div>
@@ -384,7 +384,7 @@ export default function DigestPage() {
                         <span className="text-sm font-medium text-[var(--text-secondary)] block">
                           {count}
                         </span>
-                        <span className="text-xs text-[var(--text-muted)]/60">{cat}</span>
+                        <span className="text-sm text-[var(--text-muted)]/70">{cat}</span>
                       </div>
                     ))}
                   </div>
@@ -404,19 +404,19 @@ export default function DigestPage() {
               <div className="glass-card p-6">
                 <div className="mb-4">
                   <h2 className="text-lg font-semibold text-[var(--text-primary)]">Needs Attention</h2>
-                  <p className="text-xs text-[var(--text-muted)]/60">{insights.staleItems.length} items not touched in 2+ weeks</p>
+                  <p className="text-sm text-[var(--text-muted)]/70">{insights.staleItems.length} items not touched in 2+ weeks</p>
                 </div>
 
                 <div className="space-y-2">
                   {insights.staleItems.slice(0, 5).map((item) => (
                     <div key={item.id} className="flex items-center justify-between rounded-lg bg-[var(--bg-elevated)] p-3">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-xs text-[var(--text-muted)]/60 shrink-0">
+                        <span className="text-sm text-[var(--text-muted)]/70 shrink-0">
                           {item.category}
                         </span>
                         <span className="text-sm text-[var(--text-primary)] truncate">{item.title}</span>
                       </div>
-                      <span className="shrink-0 text-xs text-[var(--text-muted)]/60 ml-2">
+                      <span className="shrink-0 text-sm text-[var(--text-muted)]/70 ml-2">
                         {item.daysSinceEdit}d ago
                       </span>
                     </div>
@@ -424,7 +424,7 @@ export default function DigestPage() {
                 </div>
 
                 {insights.staleItems.length > 5 && (
-                  <p className="mt-3 text-center text-xs text-[var(--text-muted)]/60">
+                  <p className="mt-3 text-center text-sm text-[var(--text-muted)]/70">
                     +{insights.staleItems.length - 5} more items
                   </p>
                 )}

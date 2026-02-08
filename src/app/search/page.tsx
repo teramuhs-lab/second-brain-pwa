@@ -361,7 +361,7 @@ export default function SearchPage() {
       {/* Header - zen styling */}
       <header className="mb-8 animate-fade-up">
         <h1 className="text-xl font-semibold text-[var(--text-primary)]">Search</h1>
-        <p className="mt-1 text-xs text-[var(--text-muted)]/60">
+        <p className="mt-1 text-sm text-[var(--text-muted)]/70">
           Find anything in your brain
         </p>
       </header>
@@ -469,13 +469,13 @@ export default function SearchPage() {
       {/* Saved Searches - zen styling */}
       {!hasSearched && (
         <div className="space-y-4 pt-4">
-          <p className="text-xs text-[var(--text-muted)]/50">Quick searches</p>
+          <p className="text-sm text-[var(--text-muted)]/60">Quick searches</p>
           <div className="flex flex-wrap gap-2">
             {savedSearches.map((saved) => (
               <button
                 key={saved.id}
                 onClick={() => handleSavedSearchClick(saved.query)}
-                className="group flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-[var(--text-muted)]/70 transition-colors hover:text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]/30"
+                className="group flex items-center gap-2 rounded-lg px-3 py-2 text-base text-[var(--text-secondary)]/80 transition-colors hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)]/30"
               >
                 <span>{saved.name}</span>
                 {saved.createdAt && (
@@ -506,7 +506,7 @@ export default function SearchPage() {
 
           {/* Category breakdown - zen styling */}
           {grouped && results.length > 0 && (
-            <div className="flex gap-3 text-xs text-[var(--text-muted)]/60">
+            <div className="flex gap-3 text-sm text-[var(--text-muted)]/70">
               {(Object.entries(grouped) as [Category, number][])
                 .filter(([, count]) => count > 0)
                 .map(([category, count]) => (
@@ -532,8 +532,8 @@ export default function SearchPage() {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-16">
-              <span className="text-sm text-[var(--text-muted)]/60">No results found</span>
-              <span className="mt-1 text-xs text-[var(--text-muted)]/40">Try rephrasing your question</span>
+              <span className="text-base text-[var(--text-secondary)]/70">No results found</span>
+              <span className="mt-1 text-sm text-[var(--text-muted)]/60">Try rephrasing your question</span>
             </div>
           )}
         </div>

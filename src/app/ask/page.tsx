@@ -110,7 +110,7 @@ export default function AskPage() {
       <header className="flex items-center justify-between px-5 pt-6 pb-4">
         <div>
           <h1 className="text-xl font-semibold text-[var(--text-primary)]">Ask</h1>
-          <p className="text-xs text-[var(--text-muted)]/60">Research your knowledge</p>
+          <p className="text-sm text-[var(--text-muted)]/70">Research your knowledge</p>
         </div>
 
         {messages.length > 0 && (
@@ -132,12 +132,12 @@ export default function AskPage() {
         {messages.length === 0 ? (
           // Empty state - zen styling, centered
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <p className="text-sm text-[var(--text-muted)]/60 mb-6">
+            <p className="text-base text-[var(--text-secondary)]/70 mb-6">
               Ask anything about your knowledge
             </p>
 
             {/* Example prompts - subtle, centered */}
-            <div className="space-y-2 w-full max-w-xs mx-auto">
+            <div className="space-y-2.5 w-full max-w-xs mx-auto">
               {[
                 'What should I focus on today?',
                 'Compare my active projects',
@@ -147,7 +147,7 @@ export default function AskPage() {
                 <button
                   key={prompt}
                   onClick={() => handleSend(prompt)}
-                  className="block w-full rounded-lg px-4 py-2.5 text-center text-sm text-[var(--text-muted)]/70 transition-colors hover:text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]/30"
+                  className="block w-full rounded-lg px-4 py-2.5 text-center text-base text-[var(--text-secondary)]/80 transition-colors hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)]/30"
                 >
                   {prompt}
                 </button>

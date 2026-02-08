@@ -101,7 +101,7 @@ export default function ReadingPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-[var(--text-primary)]">Reading</h1>
-            <p className="text-xs text-[var(--text-muted)]/60">{items.length} saved</p>
+            <p className="text-sm text-[var(--text-muted)]/70">{items.length} saved</p>
           </div>
         </div>
 
@@ -114,7 +114,7 @@ export default function ReadingPage() {
               className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                 filter === f
                   ? 'text-[var(--text-primary)]'
-                  : 'text-[var(--text-muted)]/60 hover:text-[var(--text-secondary)]'
+                  : 'text-[var(--text-muted)]/70 hover:text-[var(--text-secondary)]'
               }`}
             >
               {f === 'all' ? 'All' : f === 'today' ? 'Today' : 'Week'}
@@ -139,8 +139,8 @@ export default function ReadingPage() {
       {/* Empty state - zen styling */}
       {!isLoading && filteredItems.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16">
-          <span className="text-sm text-[var(--text-muted)]/60">No articles yet</span>
-          <span className="mt-1 text-xs text-[var(--text-muted)]/40">Paste a URL to save articles</span>
+          <span className="text-base text-[var(--text-secondary)]/70">No articles yet</span>
+          <span className="mt-1 text-sm text-[var(--text-muted)]/60">Paste a URL to save articles</span>
         </div>
       )}
 
@@ -159,7 +159,7 @@ export default function ReadingPage() {
                     <h2 className="font-semibold text-[var(--text-primary)] line-clamp-2">
                       {item.title}
                     </h2>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]/60">
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-[var(--text-muted)]/70">
                       {item.source && <span>{getHostname(item.source)}</span>}
                       <span className="opacity-40">·</span>
                       <span className={getCategoryColor()}>
@@ -181,7 +181,7 @@ export default function ReadingPage() {
                 {/* Expand button - zen styling */}
                 <button
                   onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
-                  className="mt-3 flex items-center gap-1 text-xs text-[var(--text-muted)]/60 transition-colors hover:text-[var(--text-secondary)]"
+                  className="mt-3 flex items-center gap-1 text-sm text-[var(--text-muted)]/70 transition-colors hover:text-[var(--text-secondary)]"
                 >
                   <svg
                     className={`h-3.5 w-3.5 transition-transform ${expandedId === item.id ? 'rotate-90' : ''}`}
@@ -208,7 +208,7 @@ export default function ReadingPage() {
                         href={item.source}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]/60 transition-colors hover:text-[var(--text-secondary)]"
+                        className="flex items-center gap-1.5 text-sm text-[var(--text-muted)]/70 transition-colors hover:text-[var(--text-secondary)]"
                       >
                         <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" strokeLinecap="round" strokeLinejoin="round"/>
