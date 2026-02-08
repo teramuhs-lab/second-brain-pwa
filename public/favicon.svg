@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="512"><svg xmlns="http://www.w3.org/2000/svg" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="512"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Background gradient -->
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0a0f"></stop>
+      <stop offset="100%" stop-color="#12121a"></stop>
+    </linearGradient>
+
+    <!-- Connection gradient (cyan to purple) -->
+    <linearGradient id="connection" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00d4ff"></stop>
+      <stop offset="100%" stop-color="#a855f7"></stop>
+    </linearGradient>
+
+    <!-- Node glow -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="coloredBlur"></feGaussianBlur>
+      <feMerge>
+        <feMergeNode in="coloredBlur"></feMergeNode>
+        <feMergeNode in="SourceGraphic"></feMergeNode>
+      </feMerge>
+    </filter>
+
+    <!-- Subtle outer glow for connections -->
+    <filter id="lineGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"></feGaussianBlur>
+      <feMerge>
+        <feMergeNode in="blur"></feMergeNode>
+        <feMergeNode in="SourceGraphic"></feMergeNode>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="108" fill="url(#bg)"></rect>
+
+  <!-- Neural connections -->
+  <g stroke="url(#connection)" stroke-width="3" fill="none" opacity="0.6" filter="url(#lineGlow)">
+    <!-- Center to outer nodes -->
+    <line x1="256" y1="256" x2="156" y2="156"></line>
+    <line x1="256" y1="256" x2="356" y2="156"></line>
+    <line x1="256" y1="256" x2="156" y2="356"></line>
+    <line x1="256" y1="256" x2="356" y2="356"></line>
+    <line x1="256" y1="256" x2="256" y2="120"></line>
+    <line x1="256" y1="256" x2="256" y2="392"></line>
+    <line x1="256" y1="256" x2="120" y2="256"></line>
+    <line x1="256" y1="256" x2="392" y2="256"></line>
+
+    <!-- Outer node connections (forming a subtle network) -->
+    <line x1="156" y1="156" x2="256" y2="120" opacity="0.4"></line>
+    <line x1="356" y1="156" x2="256" y2="120" opacity="0.4"></line>
+    <line x1="156" y1="156" x2="120" y2="256" opacity="0.4"></line>
+    <line x1="356" y1="156" x2="392" y2="256" opacity="0.4"></line>
+    <line x1="156" y1="356" x2="120" y2="256" opacity="0.4"></line>
+    <line x1="356" y1="356" x2="392" y2="256" opacity="0.4"></line>
+    <line x1="156" y1="356" x2="256" y2="392" opacity="0.4"></line>
+    <line x1="356" y1="356" x2="256" y2="392" opacity="0.4"></line>
+  </g>
+
+  <!-- Central node (largest, brightest) -->
+  <circle cx="256" cy="256" r="28" fill="url(#connection)" filter="url(#glow)"></circle>
+  <circle cx="256" cy="256" r="14" fill="white" opacity="0.9"></circle>
+
+  <!-- Primary nodes (medium size) -->
+  <g filter="url(#glow)">
+    <circle cx="156" cy="156" r="18" fill="#00d4ff"></circle>
+    <circle cx="356" cy="156" r="18" fill="#22d3ee"></circle>
+    <circle cx="156" cy="356" r="18" fill="#8b5cf6"></circle>
+    <circle cx="356" cy="356" r="18" fill="#a855f7"></circle>
+  </g>
+
+  <!-- Secondary nodes (smaller, more subtle) -->
+  <g opacity="0.8">
+    <circle cx="256" cy="120" r="12" fill="#06b6d4"></circle>
+    <circle cx="256" cy="392" r="12" fill="#c084fc"></circle>
+    <circle cx="120" cy="256" r="12" fill="#14b8a6"></circle>
+    <circle cx="392" cy="256" r="12" fill="#d946ef"></circle>
+  </g>
+
+  <!-- Inner highlights on primary nodes -->
+  <g fill="white" opacity="0.7">
+    <circle cx="152" cy="152" r="5"></circle>
+    <circle cx="352" cy="152" r="5"></circle>
+    <circle cx="152" cy="352" r="5"></circle>
+    <circle cx="352" cy="352" r="5"></circle>
+  </g>
+</svg></svg><style>@media (prefers-color-scheme: light) { :root { filter: none; } }
+@media (prefers-color-scheme: dark) { :root { filter: none; } }
+</style></svg>
