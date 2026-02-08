@@ -6,24 +6,26 @@ import type { SearchResult, Category, SavedSearch } from '@/lib/types';
 import { useToast } from '@/components/Toast';
 import { SearchDetailModal } from '@/components/SearchDetailModal';
 
+// Zen styling - muted, neutral colors
 const CATEGORY_COLORS: Record<Category, string> = {
-  People: 'from-blue-500 to-cyan-500',
-  Project: 'from-green-500 to-emerald-500',
-  Idea: 'from-purple-500 to-pink-500',
-  Admin: 'from-orange-500 to-amber-500',
+  People: 'bg-[var(--bg-elevated)]',
+  Project: 'bg-[var(--bg-elevated)]',
+  Idea: 'bg-[var(--bg-elevated)]',
+  Admin: 'bg-[var(--bg-elevated)]',
 };
 
-const CATEGORY_ICONS: Record<Category, string> = {
-  People: '👤',
-  Project: '🚀',
-  Idea: '💡',
-  Admin: '📋',
+// Priority dots instead of badges
+const PRIORITY_DOT: Record<string, string> = {
+  High: 'bg-red-400/80',
+  Medium: 'bg-amber-400/70',
+  Low: '',
 };
 
+// Priority button active colors - zen muted style
 const PRIORITY_COLORS: Record<string, string> = {
-  High: 'text-red-400 bg-red-500/20',
-  Medium: 'text-yellow-400 bg-yellow-500/20',
-  Low: 'text-green-400 bg-green-500/20',
+  High: 'bg-[var(--bg-deep)] text-[var(--text-primary)] ring-1 ring-[var(--border-subtle)]',
+  Medium: 'bg-[var(--bg-deep)] text-[var(--text-primary)] ring-1 ring-[var(--border-subtle)]',
+  Low: 'bg-[var(--bg-deep)] text-[var(--text-primary)] ring-1 ring-[var(--border-subtle)]',
 };
 
 // Category to database mapping
@@ -38,27 +40,29 @@ const CATEGORY_TO_DB: Record<string, string> = {
 // PHASE 5: SAVED SEARCHES
 // ============================================
 
+// Zen saved searches - no emojis
 const DEFAULT_SAVED_SEARCHES: SavedSearch[] = [
-  { id: '1', name: 'Active Projects', query: 'active projects', icon: '🚀', createdAt: '' },
-  { id: '2', name: 'Urgent Tasks', query: 'high priority tasks due this week', icon: '🔥', createdAt: '' },
-  { id: '3', name: 'Recent People', query: 'people I met recently', icon: '👥', createdAt: '' },
-  { id: '4', name: 'AI Ideas', query: 'ideas about AI', icon: '🤖', createdAt: '' },
+  { id: '1', name: 'Active Projects', query: 'active projects', createdAt: '' },
+  { id: '2', name: 'Urgent Tasks', query: 'high priority tasks', createdAt: '' },
+  { id: '3', name: 'Recent People', query: 'people I met recently', createdAt: '' },
+  { id: '4', name: 'AI Ideas', query: 'ideas about AI', createdAt: '' },
 ];
 
 function useSavedSearches() {
-  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>(DEFAULT_SAVED_SEARCHES);
-
-  useEffect(() => {
+  // Initialize with lazy function to read from localStorage
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>(() => {
+    if (typeof window === 'undefined') return DEFAULT_SAVED_SEARCHES;
     const stored = localStorage.getItem('savedSearches');
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
-        setSavedSearches([...DEFAULT_SAVED_SEARCHES, ...parsed]);
+        return [...DEFAULT_SAVED_SEARCHES, ...parsed];
       } catch {
-        // Use defaults
+        return DEFAULT_SAVED_SEARCHES;
       }
     }
-  }, []);
+    return DEFAULT_SAVED_SEARCHES;
+  });
 
   const saveSearch = useCallback((name: string, query: string) => {
     const newSearch: SavedSearch = {
@@ -155,50 +159,23 @@ function SearchResultCard({ result, onAction, onViewDetails, formatDate }: Searc
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-start gap-3">
-          <div
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${CATEGORY_COLORS[result.category]}`}
-          >
-            <span className="text-lg">{CATEGORY_ICONS[result.category]}</span>
-          </div>
+          {/* Priority dot */}
+          {result.priority && result.priority !== 'Low' && (
+            <span className={`mt-2 h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[result.priority]}`} />
+          )}
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-1.5">
-                <h3 className="font-medium text-[var(--text-primary)] leading-tight">{result.title}</h3>
-                {result.source && (
-                  <svg
-                    className="h-3.5 w-3.5 text-[var(--accent-cyan)] shrink-0"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    aria-label="Has source link"
-                  >
-                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
-              </div>
-              {result.relevanceScore && result.relevanceScore > 15 && (
-                <span className="shrink-0 text-xs text-[var(--accent-cyan)]">✨ Best match</span>
-              )}
+              <h3 className="font-medium text-[var(--text-primary)] leading-tight">{result.title}</h3>
             </div>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]/70">
               <span>{result.category}</span>
               {result.status && (
                 <>
-                  <span>•</span>
+                  <span className="opacity-40">·</span>
                   <span>{result.status}</span>
                 </>
               )}
-              {result.priority && (
-                <>
-                  <span>•</span>
-                  <span className={`px-1.5 py-0.5 rounded ${PRIORITY_COLORS[result.priority] || ''}`}>
-                    {result.priority}
-                  </span>
-                </>
-              )}
-              <span>•</span>
+              <span className="opacity-40">·</span>
               <span>{formatDate(result.lastEdited)}</span>
             </div>
 
@@ -380,14 +357,16 @@ export default function SearchPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-[var(--text-primary)]">Smart Search</h1>
-        <p className="mt-1 text-sm text-[var(--text-muted)]">
-          Ask anything in natural language
+    <div className="mx-auto max-w-lg px-5 pt-8 pb-24">
+      {/* Header - zen styling */}
+      <header className="mb-8 animate-fade-up">
+        <h1 className="text-xl font-semibold text-[var(--text-primary)]">Search</h1>
+        <p className="mt-1 text-xs text-[var(--text-muted)]/60">
+          Find anything in your brain
         </p>
-      </div>
+      </header>
+
+      <div className="space-y-6">
 
       {/* Search Input */}
       <div className="relative">
@@ -426,12 +405,12 @@ export default function SearchPage() {
             <button
               onClick={() => handleSearch()}
               disabled={!query.trim() || isSearching}
-              className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--accent-cyan)] to-[#00a8cc] text-[var(--bg-deep)] shadow-lg transition-all duration-200 hover:scale-105 disabled:opacity-30 disabled:hover:scale-100"
+              className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--text-primary)] text-[var(--bg-deep)] transition-all duration-200 hover:opacity-80 disabled:opacity-20"
             >
               {isSearching ? (
                 <div className="spinner" />
               ) : (
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               )}
@@ -487,19 +466,18 @@ export default function SearchPage() {
         </div>
       )}
 
-      {/* Saved Searches (Phase 5) */}
+      {/* Saved Searches - zen styling */}
       {!hasSearched && (
-        <div className="space-y-3">
-          <h2 className="text-sm font-medium text-[var(--text-secondary)]">Quick Searches</h2>
+        <div className="space-y-4 pt-4">
+          <p className="text-xs text-[var(--text-muted)]/50">Quick searches</p>
           <div className="flex flex-wrap gap-2">
             {savedSearches.map((saved) => (
               <button
                 key={saved.id}
                 onClick={() => handleSavedSearchClick(saved.query)}
-                className="group flex items-center gap-2 rounded-xl bg-[var(--bg-elevated)] px-3 py-2 text-sm transition-colors hover:bg-[var(--bg-surface)]"
+                className="group flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-[var(--text-muted)]/70 transition-colors hover:text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]/30"
               >
-                <span>{saved.icon || '🔍'}</span>
-                <span className="text-[var(--text-secondary)]">{saved.name}</span>
+                <span>{saved.name}</span>
                 {saved.createdAt && (
                   <button
                     onClick={(e) => { e.stopPropagation(); removeSearch(saved.id); }}
@@ -513,63 +491,28 @@ export default function SearchPage() {
               </button>
             ))}
           </div>
-
-          {/* Example queries */}
-          <div className="mt-4">
-            <h3 className="text-xs font-medium text-[var(--text-muted)] mb-2">Try asking:</h3>
-            <div className="space-y-1 text-xs text-[var(--text-muted)]">
-              <p className="cursor-pointer hover:text-[var(--text-secondary)]" onClick={() => handleSavedSearchClick('What did I discuss with Sarah?')}>
-                • &quot;What did I discuss with Sarah?&quot;
-              </p>
-              <p className="cursor-pointer hover:text-[var(--text-secondary)]" onClick={() => handleSavedSearchClick('Show my urgent tasks')}>
-                • &quot;Show my urgent tasks&quot;
-              </p>
-              <p className="cursor-pointer hover:text-[var(--text-secondary)]" onClick={() => handleSavedSearchClick('Ideas about productivity')}>
-                • &quot;Ideas about productivity&quot;
-              </p>
-              <p className="cursor-pointer hover:text-[var(--text-secondary)]" onClick={() => handleSavedSearchClick('Everything from last week')}>
-                • &quot;Everything from last week&quot;
-              </p>
-            </div>
-          </div>
         </div>
       )}
 
       {/* Results */}
       {hasSearched && (
         <div className="space-y-4">
-          {/* Summary */}
+          {/* Summary - zen styling */}
           {summary && (
-            <div className="glass-card p-4 border border-[var(--accent-cyan)]/30">
-              <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--accent-purple)] to-[var(--accent-cyan)]">
-                  <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-[var(--accent-cyan)]">AI Analysis</p>
-                  <p className="mt-1 text-sm text-[var(--text-secondary)] leading-relaxed">{summary}</p>
-                </div>
-              </div>
+            <div className="rounded-xl bg-[var(--bg-surface)]/30 border border-[var(--border-subtle)]/30 p-4">
+              <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{summary}</p>
             </div>
           )}
 
-          {/* Category breakdown */}
+          {/* Category breakdown - zen styling */}
           {grouped && results.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto pb-2">
+            <div className="flex gap-3 text-xs text-[var(--text-muted)]/60">
               {(Object.entries(grouped) as [Category, number][])
                 .filter(([, count]) => count > 0)
                 .map(([category, count]) => (
-                  <div
-                    key={category}
-                    className={`flex items-center gap-2 rounded-xl bg-gradient-to-r ${CATEGORY_COLORS[category]} px-3 py-1.5`}
-                  >
-                    <span className="text-sm">{CATEGORY_ICONS[category]}</span>
-                    <span className="text-xs font-medium text-white">
-                      {count} {category}
-                    </span>
-                  </div>
+                  <span key={category}>
+                    {category} · {count}
+                  </span>
                 ))}
             </div>
           )}
@@ -588,10 +531,9 @@ export default function SearchPage() {
               ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center rounded-xl bg-[var(--bg-elevated)] py-12">
-              <span className="text-4xl mb-3">🔍</span>
-              <span className="text-sm text-[var(--text-muted)]">No results found</span>
-              <span className="mt-1 text-xs text-[var(--text-muted)]">Try rephrasing your question</span>
+            <div className="flex flex-col items-center justify-center py-16">
+              <span className="text-sm text-[var(--text-muted)]/60">No results found</span>
+              <span className="mt-1 text-xs text-[var(--text-muted)]/40">Try rephrasing your question</span>
             </div>
           )}
         </div>
@@ -605,6 +547,7 @@ export default function SearchPage() {
         entryCategory={selectedEntry?.category || 'Admin'}
         onAction={() => handleSearch()}
       />
+      </div>
     </div>
   );
 }

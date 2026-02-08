@@ -142,23 +142,18 @@ export default function CapturePage() {
 
   return (
     <div className="mx-auto max-w-lg px-5 pt-12">
-      {/* Header */}
+      {/* Header - zen styling */}
       <header className="mb-10 animate-fade-up">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--accent-cyan)] to-[var(--accent-purple)] text-lg">
-            🧠
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight text-[var(--text-primary)]">
-            Second Brain
-          </h1>
-        </div>
-        <p className="text-base text-[var(--text-muted)] ml-[52px]">
-          Capture thoughts. Let AI organize.
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
+          Capture
+        </h1>
+        <p className="mt-1 text-sm text-[var(--text-muted)]/70">
+          Thoughts become knowledge
         </p>
       </header>
 
       {/* Capture Input */}
-      <div className="mb-8 animate-fade-up delay-1" style={{ opacity: 0 }}>
+      <div className="mb-8 animate-fade-up delay-1">
         <CaptureInput
           onSubmit={handleCapture}
           onUrlSubmit={handleUrlCapture}
@@ -166,38 +161,32 @@ export default function CapturePage() {
         />
       </div>
 
-      {/* URL Processing Progress */}
+      {/* URL Processing Progress - zen styling */}
       {isUrlProcessing && !urlResult && (
-        <div className="mb-8 animate-fade-up glass-card p-5">
+        <div className="mb-8 animate-fade-up rounded-xl bg-[var(--bg-surface)]/50 border border-[var(--border-subtle)]/50 p-5">
           <div className="flex items-center gap-3 mb-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20">
-              <svg className="h-5 w-5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-              </svg>
-            </div>
+            <svg className="h-5 w-5 text-[var(--text-muted)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
             <div>
-              <h3 className="text-sm font-medium text-[var(--text-primary)]">Processing Link</h3>
-              <p className="text-xs text-[var(--text-muted)]">This may take 30-60 seconds for videos</p>
+              <h3 className="text-sm font-medium text-[var(--text-primary)]">Processing</h3>
+              <p className="text-xs text-[var(--text-muted)]/60">This may take a moment</p>
             </div>
           </div>
 
-          {/* Progress bar */}
-          <div className="h-2 w-full rounded-full bg-[var(--bg-elevated)] overflow-hidden mb-3">
+          {/* Progress bar - muted */}
+          <div className="h-1 w-full rounded-full bg-[var(--bg-elevated)] overflow-hidden mb-3">
             <div
-              className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-1000 ease-out"
+              className="h-full bg-[var(--text-muted)]/40 transition-all duration-1000 ease-out"
               style={{ width: `${((processingStage + 1) / URL_STAGES.length) * 100}%` }}
             />
           </div>
 
-          {/* Stage text */}
-          <div className="flex items-center gap-2 text-sm text-emerald-400">
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
+          {/* Stage text - subtle */}
+          <p className="text-xs text-[var(--text-muted)]/60">
             {URL_STAGES[processingStage]}
-          </div>
+          </p>
         </div>
       )}
 
@@ -227,32 +216,23 @@ export default function CapturePage() {
         </div>
       )}
 
-      {/* Quick tips card */}
+      {/* Quick tips - zen styling */}
       {!confirmation?.show && !urlResult && (
-        <div className="animate-fade-up delay-2 glass-card p-5" style={{ opacity: 0 }}>
-          <h2 className="mb-4 flex items-center gap-2 text-base font-semibold text-[var(--text-primary)]">
-            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--accent-cyan-dim)] text-xs">
-              💡
-            </span>
-            Examples
-          </h2>
-          <div className="space-y-3">
+        <div className="animate-fade-up delay-2 pt-8">
+          <p className="text-xs text-[var(--text-muted)]/50 mb-3">Try saying...</p>
+          <div className="space-y-2">
             {[
-              { text: 'Follow up with Sarah next week', category: 'People' },
-              { text: 'Build landing page for new project', category: 'Project' },
-              { text: 'Great quote from the podcast today', category: 'Idea' },
-              { text: 'Pay electricity bill by Friday', category: 'Admin' },
-              { text: 'https://example.com/article', category: 'Link' },
+              'Follow up with Sarah next week',
+              'Build landing page for new project',
+              'Great insight from the podcast',
+              'Pay electricity bill by Friday',
             ].map((example, i) => (
-              <div
+              <p
                 key={i}
-                className="flex items-center justify-between rounded-lg bg-[var(--bg-elevated)] px-3 py-2"
+                className="text-sm text-[var(--text-muted)]/70"
               >
-                <span className="text-sm text-[var(--text-secondary)]">&ldquo;{example.text}&rdquo;</span>
-                <span className={`text-xs font-medium ${example.category === 'Link' ? 'text-[#10b981]' : 'text-[var(--text-muted)]'}`}>
-                  {example.category}
-                </span>
-              </div>
+                &ldquo;{example}&rdquo;
+              </p>
             ))}
           </div>
         </div>

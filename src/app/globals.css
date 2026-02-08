@@ -147,7 +147,19 @@ body::after {
 }
 
 .animate-fade-up {
-  animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-fade-up.delay-1 {
+  animation-delay: 0.1s;
+}
+
+.animate-fade-up.delay-2 {
+  animation-delay: 0.2s;
+}
+
+.animate-fade-up.delay-3 {
+  animation-delay: 0.3s;
 }
 
 .animate-fade-in {
@@ -173,7 +185,7 @@ body::after {
   animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Stagger delays */
+/* Stagger delays - for non-fade-up animations */
 .delay-1 { animation-delay: 0.1s; }
 .delay-2 { animation-delay: 0.2s; }
 .delay-3 { animation-delay: 0.3s; }
@@ -412,4 +424,85 @@ body::after {
 ::selection {
   background: var(--accent-cyan-dim);
   color: var(--text-primary);
+}
+
+/* ============================================
+   ZEN MODE - CALM TRANSITIONS
+   ============================================ */
+
+/* Page content fade-in */
+@keyframes zen-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.zen-page-enter {
+  animation: zen-fade-in 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+}
+
+/* Breathing animation for loaders */
+@keyframes zen-breathe {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.02);
+  }
+}
+
+.zen-breathe {
+  animation: zen-breathe 2s ease-in-out infinite;
+}
+
+/* Subtle hover lift */
+.zen-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.zen-lift:hover {
+  transform: translateY(-1px);
+}
+
+.zen-lift:active {
+  transform: translateY(0);
+}
+
+/* Muted focus states */
+.zen-focus:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+}
+
+/* Smooth color transitions */
+.zen-transition {
+  transition: all 0.2s ease;
+}
+
+/* Calm skeleton loading */
+@keyframes zen-shimmer {
+  0% {
+    background-position: -100% 0;
+  }
+  100% {
+    background-position: 100% 0;
+  }
+}
+
+.zen-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 25%,
+    rgba(255, 255, 255, 0.06) 50%,
+    rgba(255, 255, 255, 0.03) 75%
+  );
+  background-size: 200% 100%;
+  animation: zen-shimmer 2s ease-in-out infinite;
 }

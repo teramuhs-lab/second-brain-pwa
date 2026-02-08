@@ -11,6 +11,9 @@ interface ChatMessageProps {
   citations?: ResearchCitation[];
   researchSteps?: ResearchStep[];
   expertDomain?: string;
+  // Save functionality
+  onSave?: (category: 'Idea' | 'Admin') => Promise<void>;
+  question?: string; // The original question (for saving context)
 }
 
 // Domain display names and colors
@@ -46,9 +49,30 @@ export function ChatMessage({
   citations = [],
   researchSteps = [],
   expertDomain,
+  onSave,
+  question,
 }: ChatMessageProps) {
   const isUser = role === 'user';
   const [showSteps, setShowSteps] = useState(false);
+  const [showSaveMenu, setShowSaveMenu] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+
+  const handleSave = async (category: 'Idea' | 'Admin') => {
+    if (!onSave) return;
+    setIsSaving(true);
+    setShowSaveMenu(false);
+    try {
+      await onSave(category);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } catch {
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   // Format the response text with markdown support
   const formatContent = (text: string) => {
@@ -203,6 +227,77 @@ export function ChatMessage({
                 {tool.replace(/_/g, ' ')}
               </span>
             ))}
+          </div>
+        )}
+
+        {/* Save button for assistant messages */}
+        {!isUser && onSave && (
+          <div className="mt-3 flex items-center gap-2 border-t border-[rgba(168,85,247,0.1)] pt-2">
+            <div className="relative">
+              <button
+                onClick={() => setShowSaveMenu(!showSaveMenu)}
+                disabled={isSaving || saveStatus === 'saved'}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all ${
+                  saveStatus === 'saved'
+                    ? 'bg-green-500/20 text-green-400'
+                    : saveStatus === 'error'
+                      ? 'bg-red-500/20 text-red-400'
+                      : 'bg-[rgba(168,85,247,0.1)] text-[var(--text-muted)] hover:bg-[rgba(168,85,247,0.2)] hover:text-[var(--text-secondary)]'
+                }`}
+              >
+                {isSaving ? (
+                  <>
+                    <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 12a9 9 0 11-6.219-8.56" strokeLinecap="round" />
+                    </svg>
+                    Saving...
+                  </>
+                ) : saveStatus === 'saved' ? (
+                  <>
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Saved!
+                  </>
+                ) : saveStatus === 'error' ? (
+                  <>
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Failed
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                      <polyline points="17 21 17 13 7 13 7 21" />
+                      <polyline points="7 3 7 8 15 8" />
+                    </svg>
+                    Save to Brain
+                  </>
+                )}
+              </button>
+
+              {/* Save menu dropdown */}
+              {showSaveMenu && (
+                <div className="absolute bottom-full left-0 mb-1 w-40 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-1 shadow-lg">
+                  <button
+                    onClick={() => handleSave('Idea')}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]"
+                  >
+                    <span className="text-base">💡</span>
+                    Save as Idea
+                  </button>
+                  <button
+                    onClick={() => handleSave('Admin')}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]"
+                  >
+                    <span className="text-base">📋</span>
+                    Save as Task
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

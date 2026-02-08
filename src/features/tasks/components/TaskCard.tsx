@@ -37,10 +37,11 @@ const STATUS_OPTIONS: Record<string, string[]> = {
   people: ['New', 'Active', 'Dormant'],
 };
 
-const PRIORITY_COLORS: Record<string, string> = {
-  High: 'text-red-400 bg-red-400/10 border-red-400/30',
-  Medium: 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30',
-  Low: 'text-green-400 bg-green-400/10 border-green-400/30',
+// Priority dot colors (zen aesthetic - muted tones)
+const PRIORITY_DOT_COLORS: Record<string, string> = {
+  High: 'bg-red-400/80',
+  Medium: 'bg-amber-400/70',
+  Low: '', // No dot for low priority
 };
 
 export function TaskCard({
@@ -241,25 +242,30 @@ export function TaskCard({
           </svg>
         </div>
 
-        {/* Card content */}
+        {/* Card content - zen styling */}
         <div
-          className={`relative glass-card p-4 transition-all duration-200 ${isLoading ? 'opacity-50' : ''} ${isCompleted ? 'opacity-60' : ''}`}
+          className={`relative rounded-xl bg-[var(--bg-surface)]/50 border border-[var(--border-subtle)]/50 p-4 transition-all duration-200 ${isLoading ? 'opacity-50' : ''} ${isCompleted ? 'opacity-50' : ''} ${isOverdue && !isCompleted ? 'border-l-2 border-l-red-400/50' : ''}`}
           style={{ transform: `translateX(${swipeOffset}px)` }}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
           <div className="flex items-start justify-between gap-3">
-            {/* Left side - checkbox and content */}
-            <div className="flex items-start gap-3 flex-1 min-w-0">
+            {/* Left side - priority dot, checkbox and content */}
+            <div className="flex items-start gap-2.5 flex-1 min-w-0">
+              {/* Priority dot - only show for High/Medium */}
+              {task.priority && task.priority !== 'Low' && (
+                <span className={`mt-2 h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT_COLORS[task.priority]}`} />
+              )}
+
               {/* Checkbox */}
               <button
                 onClick={() => onComplete(task.id)}
                 disabled={isLoading}
-                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all ${
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
                   isCompleted
-                    ? 'border-[var(--accent-green)] bg-[var(--accent-green)]'
-                    : 'border-[var(--border-glass)] hover:border-[var(--accent-cyan)]'
+                    ? 'border-emerald-500/60 bg-emerald-500/60'
+                    : 'border-[var(--text-muted)]/30 hover:border-[var(--text-muted)]/50'
                 }`}
               >
                 {isCompleted && (
@@ -274,48 +280,40 @@ export function TaskCard({
                 className="flex-1 min-w-0 cursor-pointer"
                 onClick={() => setShowFloatingCard(true)}
               >
-                <h3 className={`text-sm font-medium text-[var(--text-primary)] line-clamp-2 leading-snug ${isCompleted ? 'line-through opacity-60' : ''}`}>
+                <h3 className={`text-[15px] font-medium text-[var(--text-primary)] line-clamp-2 leading-relaxed ${isCompleted ? 'line-through opacity-50' : ''}`}>
                   {task.title}
                 </h3>
 
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  {/* Status badge */}
-                  <span className="rounded-md bg-[var(--bg-elevated)] px-2 py-0.5 text-xs text-[var(--text-secondary)]">
-                    {task.status}
-                  </span>
-
-                  {/* Priority badge */}
-                  {task.priority && (
-                    <span className={`rounded-md border px-2 py-0.5 text-xs ${PRIORITY_COLORS[task.priority] || ''}`}>
-                      {task.priority}
-                    </span>
-                  )}
-
-                  {/* Due date */}
+                {/* Subtle metadata row */}
+                <div className="mt-1 flex items-center gap-3">
+                  {/* Due date - subtle styling */}
                   {task.due_date && (
-                    <span className={`text-xs ${isOverdue ? 'text-[var(--accent-red)]' : 'text-[var(--text-muted)]'}`}>
-                      {isOverdue && '⚠ '}{formatDate(task.due_date)}
+                    <span className={`text-xs ${isOverdue ? 'text-red-400/90 font-medium' : 'text-[var(--text-muted)]/70'}`}>
+                      {formatDate(task.due_date)}
                     </span>
                   )}
 
-                  {/* Notes indicator */}
+                  {/* Notes indicator - subtle */}
                   {(localNotes || task.notes) && (
-                    <span className="text-xs text-[var(--text-muted)]">📝</span>
+                    <svg className="h-3.5 w-3.5 text-[var(--text-muted)]/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                      <path d="M14 2v6h6M16 13H8M16 17H8" />
+                    </svg>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Right side - more button */}
+            {/* Right side - more button (subtle) */}
             <button
               onClick={() => setShowFloatingCard(true)}
-              className="rounded-lg p-2 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+              className="rounded-lg p-2 text-[var(--text-muted)]/40 transition-colors hover:text-[var(--text-muted)]"
               title="More options"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                <circle cx="12" cy="6" r="2" />
-                <circle cx="12" cy="12" r="2" />
-                <circle cx="12" cy="18" r="2" />
+                <circle cx="12" cy="6" r="1.5" />
+                <circle cx="12" cy="12" r="1.5" />
+                <circle cx="12" cy="18" r="1.5" />
               </svg>
             </button>
           </div>

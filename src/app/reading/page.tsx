@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ReadingItem } from '@/lib/types';
 import { ReadingSummaryCard } from '@/components/ReadingSummaryCard';
 import { PullToRefresh } from '@/features/tasks/components/PullToRefresh';
@@ -23,6 +23,7 @@ export default function ReadingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'today' | 'week'>('all');
+  const hasFetched = useRef(false);
 
   const loadItems = useCallback(async (showLoadingState = true) => {
     if (showLoadingState) setIsLoading(true);
@@ -35,9 +36,16 @@ export default function ReadingPage() {
     await loadItems(false);
   }, [loadItems]);
 
+  // Initial data fetch - only runs once
   useEffect(() => {
-    loadItems();
-  }, [loadItems]);
+    if (hasFetched.current) return;
+    hasFetched.current = true;
+
+    fetchReadingItems().then((data) => {
+      setItems(data);
+      setIsLoading(false);
+    });
+  }, []);
 
   // Filter items by date
   const filteredItems = items.filter((item) => {
@@ -58,19 +66,9 @@ export default function ReadingPage() {
     return true;
   });
 
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'Business':
-        return 'bg-blue-500/20 text-blue-400';
-      case 'Tech':
-        return 'bg-purple-500/20 text-purple-400';
-      case 'Life':
-        return 'bg-green-500/20 text-green-400';
-      case 'Creative':
-        return 'bg-orange-500/20 text-orange-400';
-      default:
-        return 'bg-gray-500/20 text-gray-400';
-    }
+  // Zen styling - neutral category colors
+  const getCategoryColor = () => {
+    return 'text-[var(--text-muted)]/60';
   };
 
   const formatDate = (dateStr: string) => {
@@ -98,48 +96,28 @@ export default function ReadingPage() {
   return (
     <PullToRefresh onRefresh={handleRefresh}>
     <div className="mx-auto max-w-2xl px-5 pb-24 pt-6">
-      {/* Header */}
+      {/* Header - zen styling */}
       <header className="mb-6">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#10b981] to-[#059669] text-lg">
-              📰
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-[var(--text-primary)]">Reading</h1>
-              <p className="text-sm text-[var(--text-muted)]">{items.length} articles saved</p>
-            </div>
+          <div>
+            <h1 className="text-xl font-semibold text-[var(--text-primary)]">Reading</h1>
+            <p className="text-xs text-[var(--text-muted)]/60">{items.length} saved</p>
           </div>
-          <button
-            onClick={() => loadItems()}
-            disabled={isLoading}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--bg-elevated)] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)] disabled:opacity-50"
-          >
-            <svg
-              className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M21 12a9 9 0 11-6.219-8.56" strokeLinecap="round" />
-            </svg>
-          </button>
         </div>
 
-        {/* Filter tabs */}
-        <div className="mt-4 flex gap-2">
+        {/* Filter tabs - zen styling */}
+        <div className="mt-4 flex gap-1">
           {(['all', 'today', 'week'] as const).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                 filter === f
-                  ? 'bg-[#10b981] text-white'
-                  : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+                  ? 'text-[var(--text-primary)]'
+                  : 'text-[var(--text-muted)]/60 hover:text-[var(--text-secondary)]'
               }`}
             >
-              {f === 'all' ? 'All' : f === 'today' ? 'Today' : 'This Week'}
+              {f === 'all' ? 'All' : f === 'today' ? 'Today' : 'Week'}
             </button>
           ))}
         </div>
@@ -158,14 +136,11 @@ export default function ReadingPage() {
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty state - zen styling */}
       {!isLoading && filteredItems.length === 0 && (
-        <div className="glass-card p-8 text-center">
-          <div className="mb-4 text-4xl">📚</div>
-          <h3 className="text-lg font-semibold text-[var(--text-primary)]">No articles yet</h3>
-          <p className="mt-2 text-sm text-[var(--text-muted)]">
-            Paste a URL in the Capture page to save and summarize articles.
-          </p>
+        <div className="flex flex-col items-center justify-center py-16">
+          <span className="text-sm text-[var(--text-muted)]/60">No articles yet</span>
+          <span className="mt-1 text-xs text-[var(--text-muted)]/40">Paste a URL to save articles</span>
         </div>
       )}
 
@@ -175,7 +150,7 @@ export default function ReadingPage() {
           {filteredItems.map((item) => (
             <article
               key={item.id}
-              className="glass-card overflow-hidden transition-all duration-200 hover:border-[var(--border-subtle)]"
+              className="rounded-xl bg-[var(--bg-surface)]/50 border border-[var(--border-subtle)]/50 overflow-hidden transition-all duration-200"
             >
               {/* Card header */}
               <div className="p-4">
@@ -184,13 +159,13 @@ export default function ReadingPage() {
                     <h2 className="font-semibold text-[var(--text-primary)] line-clamp-2">
                       {item.title}
                     </h2>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]">
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--text-muted)]/60">
                       {item.source && <span>{getHostname(item.source)}</span>}
-                      <span>•</span>
-                      <span className={`rounded-full px-2 py-0.5 ${getCategoryColor(item.category)}`}>
+                      <span className="opacity-40">·</span>
+                      <span className={getCategoryColor()}>
                         {item.category}
                       </span>
-                      <span>•</span>
+                      <span className="opacity-40">·</span>
                       <span>{formatDate(item.created_time)}</span>
                     </div>
                   </div>
@@ -203,13 +178,13 @@ export default function ReadingPage() {
                   </p>
                 )}
 
-                {/* Expand button */}
+                {/* Expand button - zen styling */}
                 <button
                   onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}
-                  className="mt-3 flex items-center gap-1 text-sm font-medium text-[#10b981] transition-colors hover:text-[#059669]"
+                  className="mt-3 flex items-center gap-1 text-xs text-[var(--text-muted)]/60 transition-colors hover:text-[var(--text-secondary)]"
                 >
                   <svg
-                    className={`h-4 w-4 transition-transform ${expandedId === item.id ? 'rotate-90' : ''}`}
+                    className={`h-3.5 w-3.5 transition-transform ${expandedId === item.id ? 'rotate-90' : ''}`}
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -217,7 +192,7 @@ export default function ReadingPage() {
                   >
                     <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
-                  {expandedId === item.id ? 'Hide Summary' : 'Read Summary'}
+                  {expandedId === item.id ? 'Hide' : 'Summary'}
                 </button>
               </div>
 
@@ -226,21 +201,21 @@ export default function ReadingPage() {
                 <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-4">
                   <ReadingSummaryCard item={item} />
 
-                  {/* Actions */}
+                  {/* Actions - zen styling */}
                   <div className="mt-4 flex items-center gap-2">
                     {item.source && (
                       <a
                         href={item.source}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 rounded-lg bg-[#10b981] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#059669]"
+                        className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]/60 transition-colors hover:text-[var(--text-secondary)]"
                       >
-                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" strokeLinecap="round" strokeLinejoin="round"/>
                           <path d="M15 3h6v6" strokeLinecap="round" strokeLinejoin="round"/>
                           <path d="M10 14L21 3" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
-                        Open Original
+                        Open original
                       </a>
                     )}
                   </div>

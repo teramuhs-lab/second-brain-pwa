@@ -183,50 +183,22 @@ export default function DigestPage() {
 
   return (
     <div className="mx-auto max-w-lg px-5 pt-8 pb-24">
-      {/* Header */}
+      {/* Header - zen styling */}
       <header className="mb-8 animate-fade-up">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--accent-cyan)] to-blue-600 text-lg">
-              📊
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">
-                Digest
-              </h1>
-              <p className="text-sm text-[var(--text-muted)]">
-                AI-generated summaries
-              </p>
-            </div>
+          <div>
+            <h1 className="text-xl font-semibold text-[var(--text-primary)]">
+              Digest
+            </h1>
+            <p className="text-xs text-[var(--text-muted)]/60">
+              AI-generated summaries
+            </p>
           </div>
-
-          {/* Refresh button */}
-          <button
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-all hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)] disabled:opacity-50"
-            title="Refresh digest"
-          >
-            <svg
-              className={`h-5 w-5 ${isLoading ? 'animate-spin' : ''}`}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-              <path d="M21 3v5h-5" />
-              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-              <path d="M8 16H3v5" />
-            </svg>
-          </button>
         </div>
       </header>
 
       {/* Tabs */}
-      <div className="mb-6 flex gap-2 animate-fade-up delay-1" style={{ opacity: 0 }}>
+      <div className="mb-6 flex gap-2 animate-fade-up delay-1">
         <button
           onClick={() => setActiveTab('daily')}
           className={`flex-1 rounded-xl py-3 text-sm font-medium transition-all ${
@@ -260,33 +232,30 @@ export default function DigestPage() {
       </div>
 
       {/* Content */}
-      <div className="animate-fade-up delay-2" style={{ opacity: 0 }}>
+      <div className="animate-fade-up delay-2">
         {activeTab === 'daily' && (
           <div className="glass-card p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="text-2xl">☀️</span>
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Daily Briefing</h2>
-                <p className="text-xs text-[var(--text-muted)]">
-                  {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                </p>
-              </div>
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-[var(--text-primary)]">Daily Briefing</h2>
+              <p className="text-xs text-[var(--text-muted)]/60">
+                {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+              </p>
             </div>
 
             {dailyDigest && dailyDigest.status === 'success' && (
               <div className="flex flex-wrap gap-2 mb-4">
                 {dailyDigest.counts.projects > 0 && (
-                  <span className="rounded-full bg-[rgba(0,212,255,0.15)] px-2.5 py-1 text-xs text-[var(--accent-cyan)]">
+                  <span className="rounded-full bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
                     {dailyDigest.counts.projects} project{dailyDigest.counts.projects !== 1 ? 's' : ''}
                   </span>
                 )}
                 {dailyDigest.counts.tasks > 0 && (
-                  <span className="rounded-full bg-[rgba(168,85,247,0.15)] px-2.5 py-1 text-xs text-[#a855f7]">
+                  <span className="rounded-full bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
                     {dailyDigest.counts.tasks} task{dailyDigest.counts.tasks !== 1 ? 's' : ''}
                   </span>
                 )}
                 {dailyDigest.counts.followups > 0 && (
-                  <span className="rounded-full bg-[rgba(34,197,94,0.15)] px-2.5 py-1 text-xs text-[#22c55e]">
+                  <span className="rounded-full bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
                     {dailyDigest.counts.followups} follow-up{dailyDigest.counts.followups !== 1 ? 's' : ''}
                   </span>
                 )}
@@ -320,30 +289,27 @@ export default function DigestPage() {
 
         {activeTab === 'weekly' && (
           <div className="glass-card p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="text-2xl">📅</span>
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">Weekly Review</h2>
-                <p className="text-xs text-[var(--text-muted)]">
-                  Week of {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
-                </p>
-              </div>
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-[var(--text-primary)]">Weekly Review</h2>
+              <p className="text-xs text-[var(--text-muted)]/60">
+                Week of {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}
+              </p>
             </div>
 
             {weeklyDigest && weeklyDigest.status === 'success' && (
               <div className="flex flex-wrap gap-2 mb-4">
                 {weeklyDigest.counts.completedTasks > 0 && (
-                  <span className="rounded-full bg-[rgba(34,197,94,0.15)] px-2.5 py-1 text-xs text-[#22c55e]">
+                  <span className="rounded-full bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
                     {weeklyDigest.counts.completedTasks} task{weeklyDigest.counts.completedTasks !== 1 ? 's' : ''} done
                   </span>
                 )}
                 {weeklyDigest.counts.completedProjects > 0 && (
-                  <span className="rounded-full bg-[rgba(0,212,255,0.15)] px-2.5 py-1 text-xs text-[var(--accent-cyan)]">
+                  <span className="rounded-full bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
                     {weeklyDigest.counts.completedProjects} project{weeklyDigest.counts.completedProjects !== 1 ? 's' : ''} complete
                   </span>
                 )}
                 {weeklyDigest.counts.totalInbox > 0 && (
-                  <span className="rounded-full bg-[rgba(168,85,247,0.15)] px-2.5 py-1 text-xs text-[#a855f7]">
+                  <span className="rounded-full bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
                     {weeklyDigest.counts.totalInbox} new entr{weeklyDigest.counts.totalInbox !== 1 ? 'ies' : 'y'}
                   </span>
                 )}
@@ -380,20 +346,17 @@ export default function DigestPage() {
           <div className="space-y-4">
             {/* AI Insights Card */}
             <div className="glass-card p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <span className="text-2xl">🧠</span>
-                <div>
-                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">AI Insights</h2>
-                  <p className="text-xs text-[var(--text-muted)]">Patterns and observations</p>
-                </div>
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold text-[var(--text-primary)]">AI Insights</h2>
+                <p className="text-xs text-[var(--text-muted)]/60">Patterns and observations</p>
               </div>
 
               {isLoading && <DigestSkeleton />}
 
               {error && !isLoading && (
-                <div className="rounded-xl bg-[rgba(239,68,68,0.1)] border border-[rgba(239,68,68,0.2)] p-4 text-center">
-                  <p className="text-sm text-[#ef4444] mb-2">{error}</p>
-                  <button onClick={handleRefresh} className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]">
+                <div className="rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-4 text-center">
+                  <p className="text-sm text-[var(--text-secondary)] mb-2">{error}</p>
+                  <button onClick={handleRefresh} className="text-xs text-[var(--text-muted)]/60 hover:text-[var(--text-secondary)]">
                     Try again
                   </button>
                 </div>
@@ -403,25 +366,25 @@ export default function DigestPage() {
                 <>
                   {/* Weekly Stats */}
                   <div className="flex flex-wrap gap-2 mb-4">
-                    <span className="rounded-full bg-[rgba(0,212,255,0.15)] px-2.5 py-1 text-xs text-[var(--accent-cyan)]">
+                    <span className="rounded-full bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
                       {insights.weeklyStats.totalCaptures} captures this week
                     </span>
-                    <span className="rounded-full bg-[rgba(34,197,94,0.15)] px-2.5 py-1 text-xs text-[#22c55e]">
+                    <span className="rounded-full bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
                       {insights.weeklyStats.completedTasks} completed
                     </span>
-                    <span className="rounded-full bg-[rgba(168,85,247,0.15)] px-2.5 py-1 text-xs text-[#a855f7]">
+                    <span className="rounded-full bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
                       {insights.weeklyStats.newIdeas} new ideas
                     </span>
                   </div>
 
-                  {/* Category breakdown */}
+                  {/* Category breakdown - text only, no emojis */}
                   <div className="grid grid-cols-4 gap-2 mb-4">
                     {Object.entries(insights.weeklyStats.byCategory).map(([cat, count]) => (
                       <div key={cat} className="text-center rounded-lg bg-[var(--bg-elevated)] p-2">
-                        <span className="text-lg block">
-                          {cat === 'People' ? '👤' : cat === 'Projects' ? '🚀' : cat === 'Ideas' ? '💡' : '📋'}
+                        <span className="text-sm font-medium text-[var(--text-secondary)] block">
+                          {count}
                         </span>
-                        <span className="text-xs text-[var(--text-muted)]">{count}</span>
+                        <span className="text-xs text-[var(--text-muted)]/60">{cat}</span>
                       </div>
                     ))}
                   </div>
@@ -439,24 +402,21 @@ export default function DigestPage() {
             {/* Stale Items Alert */}
             {insights && insights.staleItems.length > 0 && (
               <div className="glass-card p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="text-2xl">⏰</span>
-                  <div>
-                    <h2 className="text-lg font-semibold text-[var(--text-primary)]">Needs Attention</h2>
-                    <p className="text-xs text-[var(--text-muted)]">{insights.staleItems.length} items not touched in 2+ weeks</p>
-                  </div>
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Needs Attention</h2>
+                  <p className="text-xs text-[var(--text-muted)]/60">{insights.staleItems.length} items not touched in 2+ weeks</p>
                 </div>
 
                 <div className="space-y-2">
                   {insights.staleItems.slice(0, 5).map((item) => (
                     <div key={item.id} className="flex items-center justify-between rounded-lg bg-[var(--bg-elevated)] p-3">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-sm">
-                          {item.category === 'People' ? '👤' : item.category === 'Projects' ? '🚀' : item.category === 'Ideas' ? '💡' : '📋'}
+                        <span className="text-xs text-[var(--text-muted)]/60 shrink-0">
+                          {item.category}
                         </span>
                         <span className="text-sm text-[var(--text-primary)] truncate">{item.title}</span>
                       </div>
-                      <span className="shrink-0 text-xs text-[var(--text-muted)] ml-2">
+                      <span className="shrink-0 text-xs text-[var(--text-muted)]/60 ml-2">
                         {item.daysSinceEdit}d ago
                       </span>
                     </div>
@@ -464,7 +424,7 @@ export default function DigestPage() {
                 </div>
 
                 {insights.staleItems.length > 5 && (
-                  <p className="mt-3 text-center text-xs text-[var(--text-muted)]">
+                  <p className="mt-3 text-center text-xs text-[var(--text-muted)]/60">
                     +{insights.staleItems.length - 5} more items
                   </p>
                 )}

@@ -81,7 +81,7 @@ export default function HistoryPage() {
       </header>
 
       {/* Filter tabs */}
-      <div className="mb-6 flex gap-2 overflow-x-auto pb-2 animate-fade-up delay-1" style={{ opacity: 0 }}>
+      <div className="mb-6 flex gap-2 overflow-x-auto pb-2 animate-fade-up delay-1">
         {(['all', 'Admin', 'Project', 'People', 'Idea'] as const).map((cat) => (
           <button
             key={cat}
@@ -98,7 +98,7 @@ export default function HistoryPage() {
       </div>
 
       {/* Entries list */}
-      <div className="space-y-3 animate-fade-up delay-2" style={{ opacity: 0 }}>
+      <div className="space-y-3 animate-fade-up delay-2">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-12">
             <div className="spinner mb-3" />

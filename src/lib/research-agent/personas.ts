@@ -3,6 +3,45 @@
 import OpenAI from 'openai';
 
 export type ExpertDomain = 'tech' | 'business' | 'investment' | 'personal' | 'research';
+export type QueryIntent = 'casual' | 'research';
+
+/**
+ * Casual conversation system prompt - for greetings, thanks, simple responses
+ */
+export const CASUAL_SYSTEM_PROMPT = `You are a friendly AI assistant for a personal knowledge management app called "Second Brain".
+
+Respond naturally and conversationally. Keep responses brief and friendly.
+- Don't use formal sections or headers
+- Don't cite sources unless specifically asked
+- Match the user's tone and energy
+- If they're just greeting you, respond warmly and offer to help
+- If they say thanks, acknowledge it briefly
+
+You have access to the user's notes, projects, contacts, and ideas stored in their Second Brain.
+If they seem to have a question about their knowledge, gently offer to look it up for them.`;
+
+/**
+ * Classify whether a query is casual conversation or a research question
+ */
+export function classifyQueryIntent(query: string): QueryIntent {
+  const trimmed = query.trim().toLowerCase();
+
+  const casualPatterns = [
+    /^(hi|hello|hey|howdy|yo|sup)\b/i,
+    /^how are you/i,
+    /^how('s| is) it going/i,
+    /^what'?s up/i,
+    /^good (morning|afternoon|evening|night)/i,
+    /^thanks?(\s+you)?[!.?]?$/i,
+    /^thank you[!.?]?$/i,
+    /^(ok|okay|sure|great|cool|nice|awesome|perfect)[!.?]?$/i,
+    /^(yes|no|yep|nope|yeah|nah)[!.?]?$/i,
+    /^(bye|goodbye|see you|later)[!.?]?$/i,
+    /^(got it|understood|makes sense)[!.?]?$/i,
+  ];
+
+  return casualPatterns.some(p => p.test(trimmed)) ? 'casual' : 'research';
+}
 
 export const EXPERT_PERSONAS: Record<ExpertDomain, string> = {
   tech: `You are a Senior Technical Architect with deep expertise in software engineering,

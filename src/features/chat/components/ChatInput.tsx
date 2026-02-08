@@ -65,6 +65,7 @@ export function ChatInput({
   const [speechSupported, setSpeechSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const baseTextRef = useRef(''); // Text before voice input started
 
   // Check for speech recognition support
   useEffect(() => {
@@ -91,6 +92,9 @@ export function ChatInput({
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
+    // Store current text as base before voice input
+    baseTextRef.current = text;
+
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = true;
@@ -104,7 +108,8 @@ export function ChatInput({
       let finalTranscript = '';
       let interimTranscript = '';
 
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      // Process all results from the beginning
+      for (let i = 0; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
           finalTranscript += transcript;
@@ -113,12 +118,16 @@ export function ChatInput({
         }
       }
 
-      setText((prev) => {
-        if (finalTranscript) {
-          return prev + (prev ? ' ' : '') + finalTranscript;
-        }
-        return prev + (prev ? ' ' : '') + interimTranscript;
-      });
+      // Combine base text with voice transcript
+      const base = baseTextRef.current;
+      const voiceText = finalTranscript || interimTranscript;
+      const separator = base && voiceText ? ' ' : '';
+      setText(base + separator + voiceText);
+
+      // Update base text when we get final results
+      if (finalTranscript) {
+        baseTextRef.current = base + separator + finalTranscript;
+      }
     };
 
     recognition.onerror = () => {
@@ -131,7 +140,7 @@ export function ChatInput({
 
     recognitionRef.current = recognition;
     recognition.start();
-  }, []);
+  }, [text]);
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current) {

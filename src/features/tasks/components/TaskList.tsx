@@ -18,16 +18,18 @@ const DATABASE_TO_CATEGORY: Record<string, Category> = {
 
 type TabType = 'admin' | 'projects' | 'people';
 
-const TABS: { id: TabType; label: string; icon: string; activeStatus: string }[] = [
-  { id: 'admin', label: 'Tasks', icon: '📋', activeStatus: 'Todo' },
-  { id: 'projects', label: 'Projects', icon: '🚀', activeStatus: 'Active' },
-  { id: 'people', label: 'People', icon: '👤', activeStatus: 'Active' },
+// Zen tabs - no emoji, clean labels
+const TABS: { id: TabType; label: string; activeStatus: string }[] = [
+  { id: 'admin', label: 'Tasks', activeStatus: 'Todo' },
+  { id: 'projects', label: 'Projects', activeStatus: 'Active' },
+  { id: 'people', label: 'People', activeStatus: 'Active' },
 ];
 
+// Zen tab colors - muted, calm
 const TAB_COLORS: Record<TabType, string> = {
-  admin: 'from-orange-500 to-amber-500',
-  projects: 'from-green-500 to-emerald-500',
-  people: 'from-blue-500 to-cyan-500',
+  admin: 'bg-[var(--text-primary)]',
+  projects: 'bg-[var(--text-primary)]',
+  people: 'bg-[var(--text-primary)]',
 };
 
 // Priority order for sorting
@@ -262,13 +264,13 @@ export function TaskList() {
     }
   }, [activeTab, activeTasks, showCompleted]);
 
-  // Section configuration
-  const SECTIONS: { key: Section; label: string; icon: string; color: string }[] = [
-    { key: 'overdue', label: 'Overdue', icon: '🔴', color: 'text-red-400' },
-    { key: 'today', label: activeTab === 'projects' ? 'High Priority' : 'Today', icon: activeTab === 'projects' ? '⬆️' : '🟠', color: activeTab === 'projects' ? 'text-orange-400' : 'text-orange-400' },
-    { key: 'this_week', label: 'This Week', icon: '🟡', color: 'text-yellow-400' },
-    { key: 'upcoming', label: 'Upcoming', icon: '📅', color: 'text-blue-400' },
-    { key: 'backlog', label: activeTab === 'projects' ? 'Other Projects' : 'Backlog', icon: '📥', color: 'text-[var(--text-muted)]' },
+  // Section configuration - zen styling, no emojis
+  const SECTIONS: { key: Section; label: string; color: string }[] = [
+    { key: 'overdue', label: 'Overdue', color: 'text-red-400/80' },
+    { key: 'today', label: activeTab === 'projects' ? 'Priority' : 'Today', color: 'text-[var(--text-secondary)]' },
+    { key: 'this_week', label: 'This Week', color: 'text-[var(--text-muted)]' },
+    { key: 'upcoming', label: 'Upcoming', color: 'text-[var(--text-muted)]' },
+    { key: 'backlog', label: activeTab === 'projects' ? 'Other' : 'Backlog', color: 'text-[var(--text-muted)]/70' },
   ];
 
   const displayTasks = showCompleted ? completedTasks : activeTasks;
@@ -282,8 +284,8 @@ export function TaskList() {
   return (
     <PullToRefresh onRefresh={handleRefresh}>
       <div className="space-y-6">
-        {/* Tab navigation */}
-      <div className="flex gap-2 overflow-x-auto pb-2">
+        {/* Tab navigation - zen styling */}
+      <div className="flex gap-1 overflow-x-auto pb-2">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.id;
           const tabActiveTasks = tasks.filter((t) => t.status !== completedStatus);
@@ -291,25 +293,16 @@ export function TaskList() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${
+              className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all ${
                 isActive
-                  ? `bg-gradient-to-r ${TAB_COLORS[tab.id]} text-white shadow-lg`
-                  : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]'
+                  ? 'text-[var(--text-primary)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
               }`}
             >
-              <span>{tab.icon}</span>
               <span>{tab.label}</span>
-              {!isLoading && isActive && (
-                <span className="ml-1 rounded-full px-2 py-0.5 text-xs bg-white/20">
-                  {urgentCount > 0 ? (
-                    <span className="flex items-center gap-1">
-                      <span className="text-red-300">{urgentCount}</span>
-                      <span className="opacity-50">/</span>
-                      <span>{tabActiveTasks.length}</span>
-                    </span>
-                  ) : (
-                    tabActiveTasks.length
-                  )}
+              {!isLoading && isActive && urgentCount > 0 && (
+                <span className="rounded-full bg-red-400/20 px-1.5 py-0.5 text-[10px] font-medium text-red-400">
+                  {urgentCount}
                 </span>
               )}
             </button>
@@ -317,23 +310,30 @@ export function TaskList() {
         })}
       </div>
 
-      {/* Toggle completed */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-[var(--text-primary)]">
-          {showCompleted ? 'Completed' : 'Active'}
-        </h2>
+      {/* Active tab indicator */}
+      <div className="h-px bg-gradient-to-r from-transparent via-[var(--border-subtle)] to-transparent mb-4" />
+
+      {/* Toggle completed - subtle */}
+      <div className="flex items-center justify-end">
         <button
           onClick={() => setShowCompleted(!showCompleted)}
-          className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-secondary)]"
+          className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]/60 transition-colors hover:text-[var(--text-muted)]"
         >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            {showCompleted ? (
-              <path d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" />
-            ) : (
-              <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" />
-            )}
-          </svg>
-          {showCompleted ? 'Show Active' : `Show Completed (${completedTasks.length})`}
+          {showCompleted ? (
+            <>
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" />
+              </svg>
+              Show Active
+            </>
+          ) : completedTasks.length > 0 ? (
+            <>
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" />
+              </svg>
+              Completed · {completedTasks.length}
+            </>
+          ) : null}
         </button>
       </div>
 
@@ -341,15 +341,14 @@ export function TaskList() {
       {isLoading ? (
         <TaskListSkeleton count={5} />
       ) : displayTasks.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl bg-[var(--bg-elevated)] py-12">
-          <span className="text-4xl mb-3">{showCompleted ? '🎉' : '✨'}</span>
-          <span className="text-sm text-[var(--text-muted)]">
-            {showCompleted ? 'No completed items yet' : 'All caught up!'}
+        <div className="flex flex-col items-center justify-center py-16">
+          <span className="text-sm text-[var(--text-muted)]/60">
+            {showCompleted ? 'No completed items' : 'All clear'}
           </span>
         </div>
       ) : showCompleted ? (
         // Completed tasks - flat list
-        <div className="space-y-3">
+        <div className="space-y-2">
           {completedTasks.map((task) => (
             <TaskCard
               key={task.id}
@@ -365,22 +364,22 @@ export function TaskList() {
         </div>
       ) : groupedTasks ? (
         // Active tasks - grouped by urgency
-        <div className="space-y-6">
-          {SECTIONS.map(({ key, label, icon, color }) => {
+        <div className="space-y-8">
+          {SECTIONS.map(({ key, label, color }) => {
             const sectionTasks = groupedTasks[key];
             if (sectionTasks.length === 0) return null;
 
             return (
               <div key={key}>
-                {/* Section header */}
+                {/* Section header - zen styling */}
                 <div className={`flex items-center gap-2 mb-3 ${color}`}>
-                  <span className="text-sm">{icon}</span>
-                  <span className="text-xs font-semibold uppercase tracking-wider">{label}</span>
-                  <span className="text-xs opacity-60">({sectionTasks.length})</span>
+                  <span className="text-xs font-medium tracking-wide">{label}</span>
+                  <span className="text-xs opacity-40">·</span>
+                  <span className="text-xs opacity-40">{sectionTasks.length}</span>
                 </div>
 
                 {/* Section tasks */}
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {sectionTasks.map((task) => (
                     <TaskCard
                       key={task.id}
@@ -400,7 +399,7 @@ export function TaskList() {
         </div>
       ) : (
         // Fallback flat list
-        <div className="space-y-3">
+        <div className="space-y-2">
           {displayTasks.map((task) => (
             <TaskCard
               key={task.id}
@@ -416,10 +415,10 @@ export function TaskList() {
         </div>
       )}
 
-        {/* Swipe hint */}
+        {/* Swipe hint - very subtle */}
         {!showCompleted && activeTasks.length > 0 && (
-          <p className="text-center text-xs text-[var(--text-muted)]">
-            Pull down to refresh • Tap to expand • Swipe to complete
+          <p className="text-center text-[11px] text-[var(--text-muted)]/40 pt-4">
+            Swipe right to complete · Tap to expand
           </p>
         )}
       </div>

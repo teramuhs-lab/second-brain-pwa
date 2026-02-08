@@ -446,3 +446,37 @@ export async function sendSlackNotification(data: {
     };
   }
 }
+
+// Save research result to Notion (Ideas or Admin)
+export async function saveResearchResult(data: {
+  question: string;
+  answer: string;
+  category: 'Idea' | 'Admin';
+  citations?: Array<{
+    title: string;
+    type: string;
+    url?: string;
+    database?: string;
+  }>;
+  expertDomain?: string;
+}): Promise<{ status: 'success' | 'error'; message?: string; pageId?: string; error?: string }> {
+  try {
+    const response = await fetch('/api/save-research', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Save research error:', error);
+    return {
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Failed to save research',
+    };
+  }
+}

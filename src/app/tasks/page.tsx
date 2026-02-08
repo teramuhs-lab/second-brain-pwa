@@ -21,7 +21,7 @@ export default function TasksPage() {
       </header>
 
       {/* Task List */}
-      <div className="animate-fade-up delay-1" style={{ opacity: 0 }}>
+      <div className="animate-fade-up delay-1">
         <TaskList />
       </div>
     </div>

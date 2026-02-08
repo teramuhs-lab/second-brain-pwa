@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { ChatMessage, ResearchingIndicator } from '@/components/ChatMessage';
 import { ChatInput } from '@/components/ChatInput';
-import { askResearchAgent, clearChat } from '@/lib/api';
+import { askResearchAgent, clearChat, saveResearchResult } from '@/lib/api';
 import type { ResearchCitation, ResearchStep } from '@/lib/types';
 
 interface Message {
@@ -16,6 +16,8 @@ interface Message {
   researchSteps?: ResearchStep[];
   expertDomain?: string;
   iterations?: number;
+  // For saving context
+  question?: string;
 }
 
 export default function AskPage() {
@@ -56,6 +58,7 @@ export default function AskPage() {
         researchSteps: response.research_steps,
         expertDomain: response.expert_domain,
         iterations: response.iterations,
+        question: text, // Store the original question for saving
       };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
@@ -80,20 +83,34 @@ export default function AskPage() {
     sessionIdRef.current = `research-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   }, []);
 
+  // Save a message to Notion
+  const handleSaveMessage = useCallback(async (
+    message: Message,
+    category: 'Idea' | 'Admin'
+  ) => {
+    if (!message.question) return;
+
+    await saveResearchResult({
+      question: message.question,
+      answer: message.content,
+      category,
+      citations: message.citations?.map(c => ({
+        title: c.title,
+        type: c.type,
+        url: c.url,
+        database: c.database,
+      })),
+      expertDomain: message.expertDomain,
+    });
+  }, []);
+
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col">
-      {/* Header */}
+    <div className="mx-auto flex h-[calc(100dvh-80px)] max-w-lg flex-col">
+      {/* Header - zen styling */}
       <header className="flex items-center justify-between px-5 pt-6 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#a855f7]/20 to-[#6366f1]/20 text-xl">
-            <svg className="h-5 w-5 text-[#a855f7]" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z" />
-            </svg>
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-[var(--text-primary)]">Ask Your Brain</h1>
-            <p className="text-xs text-[var(--text-muted)]">Research Agent</p>
-          </div>
+        <div>
+          <h1 className="text-xl font-semibold text-[var(--text-primary)]">Ask</h1>
+          <p className="text-xs text-[var(--text-muted)]/60">Research your knowledge</p>
         </div>
 
         {messages.length > 0 && (
@@ -113,32 +130,24 @@ export default function AskPage() {
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-5 pb-4">
         {messages.length === 0 ? (
-          // Empty state
+          // Empty state - zen styling, centered
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#a855f7]/10 to-[#6366f1]/10">
-              <svg className="h-8 w-8 text-[#a855f7]/60" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2L14.4 9.6L22 12L14.4 14.4L12 22L9.6 14.4L2 12L9.6 9.6L12 2Z" />
-              </svg>
-            </div>
-            <p className="mb-2 text-lg font-medium text-[var(--text-primary)]">
-              Research Agent Ready
-            </p>
-            <p className="max-w-[300px] text-sm text-[var(--text-muted)]">
-              I&apos;ll search your Second Brain and the web, then answer with verified sources.
+            <p className="text-sm text-[var(--text-muted)]/60 mb-6">
+              Ask anything about your knowledge
             </p>
 
-            {/* Example prompts */}
-            <div className="mt-6 space-y-2">
+            {/* Example prompts - subtle, centered */}
+            <div className="space-y-2 w-full max-w-xs mx-auto">
               {[
-                'What do you think about learning n8n?',
-                'Compare my active projects by priority',
-                'Who should I reconnect with this week?',
-                'What business ideas have I captured recently?',
+                'What should I focus on today?',
+                'Compare my active projects',
+                'Who should I reconnect with?',
+                'Recent business ideas',
               ].map((prompt) => (
                 <button
                   key={prompt}
                   onClick={() => handleSend(prompt)}
-                  className="block w-full rounded-xl bg-[var(--bg-elevated)] px-4 py-2.5 text-left text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface)]"
+                  className="block w-full rounded-lg px-4 py-2.5 text-center text-sm text-[var(--text-muted)]/70 transition-colors hover:text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]/30"
                 >
                   {prompt}
                 </button>
@@ -157,6 +166,11 @@ export default function AskPage() {
                 citations={message.citations}
                 researchSteps={message.researchSteps}
                 expertDomain={message.expertDomain}
+                question={message.question}
+                onSave={message.role === 'assistant' && message.question
+                  ? (category) => handleSaveMessage(message, category)
+                  : undefined
+                }
               />
             ))}
             {isLoading && <ResearchingIndicator status={researchStatus} />}
@@ -166,7 +180,7 @@ export default function AskPage() {
       </div>
 
       {/* Input area */}
-      <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-deep)] px-5 py-4 safe-bottom">
+      <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-deep)] px-5 py-4">
         <ChatInput onSend={handleSend} isLoading={isLoading} />
       </div>
     </div>
