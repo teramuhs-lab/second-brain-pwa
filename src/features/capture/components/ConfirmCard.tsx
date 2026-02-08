@@ -25,21 +25,23 @@ export function ConfirmCard({
   const [isLoading, setIsLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState(autoDismiss / 1000);
 
+  // Countdown timer
   useEffect(() => {
     if (autoDismiss <= 0) return;
 
     const interval = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          onDismiss();
-          return 0;
-        }
-        return prev - 1;
-      });
+      setTimeLeft((prev) => Math.max(0, prev - 1));
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [autoDismiss, onDismiss]);
+  }, [autoDismiss]);
+
+  // Auto-dismiss when timer reaches 0
+  useEffect(() => {
+    if (timeLeft === 0 && autoDismiss > 0) {
+      onDismiss();
+    }
+  }, [timeLeft, autoDismiss, onDismiss]);
 
   const handleRecategorize = async (newCategory: Category | 'Ignore') => {
     if (newCategory === category) {

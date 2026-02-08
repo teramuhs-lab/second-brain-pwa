@@ -12,13 +12,14 @@ const ENDPOINTS = {
   agent: '/api/agent', // Local endpoint for better reliability
 };
 
-// Capture a new thought
-export async function captureThought(text: string): Promise<CaptureResponse> {
+// Capture a new thought (with optional reminder date)
+export async function captureThought(text: string, reminderDate?: string): Promise<CaptureResponse> {
   try {
-    const response = await fetch(ENDPOINTS.capture, {
+    // Use local API endpoint for better reliability
+    const response = await fetch('/api/capture', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, source: 'pwa' }),
+      body: JSON.stringify({ text, reminderDate }),
     });
 
     if (!response.ok) {

@@ -18,6 +18,8 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [processingStage, setProcessingStage] = useState(0);
+  const [reminderDate, setReminderDate] = useState<string | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const hasUrl = isUrl(text);
 
   // Progress stages for URL processing
@@ -115,6 +117,54 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
     setText('');
     setIsListening(false);
     setProcessingStage(0);
+    setReminderDate(null);
+    setShowDatePicker(false);
+  };
+
+  // Helper to format date as YYYY-MM-DD
+  const formatDate = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Set reminder to tomorrow
+  const setTomorrow = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setReminderDate(formatDate(tomorrow));
+    setShowDatePicker(false);
+  };
+
+  // Set reminder to next week
+  const setNextWeek = () => {
+    const nextWeek = new Date();
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    setReminderDate(formatDate(nextWeek));
+    setShowDatePicker(false);
+  };
+
+  // Clear reminder
+  const clearReminder = () => {
+    setReminderDate(null);
+    setShowDatePicker(false);
+  };
+
+  // Format reminder display text
+  const getReminderDisplay = (): string => {
+    if (!reminderDate) return '';
+    const date = new Date(reminderDate + 'T00:00:00');
+    const today = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
+
+    if (formatDate(date) === formatDate(tomorrow)) return 'Tomorrow';
+
+    const diffDays = Math.ceil((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays === 7) return 'Next week';
+
+    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
 
   const handleSubmit = async () => {
@@ -153,10 +203,11 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
         }
       }
 
-      // Regular text capture
-      const result = await captureThought(trimmed);
+      // Regular text capture (with optional reminder)
+      const result = await captureThought(trimmed, reminderDate || undefined);
       if (result.status === 'captured') {
-        showSuccess(`Captured as ${result.category}`);
+        const reminderText = reminderDate ? ` (reminder set)` : '';
+        showSuccess(`Captured as ${result.category}${reminderText}`);
         handleClose();
         onCapture?.();
       } else {
@@ -305,6 +356,71 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
                     </svg>
                     {urlStages[processingStage]}
                   </div>
+                </div>
+              )}
+
+              {/* Reminder Selector (only for text capture, not URLs) */}
+              {!hasUrl && (
+                <div className="mt-3">
+                  {reminderDate ? (
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-1.5 text-sm text-amber-400">
+                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10" />
+                          <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        {getReminderDisplay()}
+                      </span>
+                      <button
+                        onClick={clearReminder}
+                        className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] underline"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setShowDatePicker(!showDatePicker)}
+                        className="flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                      >
+                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10" />
+                          <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        Remind me
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Date picker options */}
+                  {showDatePicker && !reminderDate && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        onClick={setTomorrow}
+                        className="rounded-lg bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors"
+                      >
+                        Tomorrow
+                      </button>
+                      <button
+                        onClick={setNextWeek}
+                        className="rounded-lg bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors"
+                      >
+                        Next week
+                      </button>
+                      <input
+                        type="date"
+                        min={formatDate(new Date())}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            setReminderDate(e.target.value);
+                            setShowDatePicker(false);
+                          }
+                        }}
+                        className="rounded-lg bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 

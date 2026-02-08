@@ -23,12 +23,12 @@ export default function CapturePage() {
   const [processingStage, setProcessingStage] = useState(0);
   const [isUrlProcessing, setIsUrlProcessing] = useState(false);
 
-  const handleCapture = useCallback(async (text: string) => {
+  const handleCapture = useCallback(async (text: string, reminderDate?: string) => {
     setIsLoading(true);
     setLastText(text);
 
     try {
-      const response = await captureThought(text);
+      const response = await captureThought(text, reminderDate);
 
       if (response.status === 'captured' && response.category) {
         setConfirmation({
