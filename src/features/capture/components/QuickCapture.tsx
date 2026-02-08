@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { usePathname } from 'next/navigation';
 import { captureThought, processUrl, isUrl } from '@/lib/api';
 import { useToast } from '@/shared/components/Toast';
 
@@ -10,6 +11,7 @@ interface QuickCaptureProps {
 }
 
 export function QuickCapture({ onCapture }: QuickCaptureProps) {
+  const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [text, setText] = useState('');
   const [isListening, setIsListening] = useState(false);
@@ -178,6 +180,12 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
   };
 
   if (!mounted) return null;
+
+  // Hide FAB on pages that already have input (Capture, Ask)
+  const hiddenPages = ['/', '/ask'];
+  if (hiddenPages.includes(pathname)) {
+    return null;
+  }
 
   return (
     <>
