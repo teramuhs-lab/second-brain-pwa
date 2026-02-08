@@ -3,7 +3,7 @@
 import OpenAI from 'openai';
 
 export type ExpertDomain = 'tech' | 'business' | 'investment' | 'personal' | 'research';
-export type QueryIntent = 'casual' | 'research';
+export type QueryIntent = 'casual' | 'follow_up' | 'research';
 
 /**
  * Casual conversation system prompt - for greetings, thanks, simple responses
@@ -21,11 +21,31 @@ You have access to the user's notes, projects, contacts, and ideas stored in the
 If they seem to have a question about their knowledge, gently offer to look it up for them.`;
 
 /**
- * Classify whether a query is casual conversation or a research question
+ * Follow-up conversation system prompt - for continuing a discussion naturally
  */
-export function classifyQueryIntent(query: string): QueryIntent {
+export const FOLLOW_UP_SYSTEM_PROMPT = `You are continuing a conversation about the user's Second Brain.
+
+The user is asking a follow-up question. Reference your previous answer directly.
+- Don't repeat the full research process
+- Build on what you already shared
+- If they ask "tell me more", expand on the most relevant part of your previous answer
+- If they ask "what about X", connect X to your previous answer
+- If they ask "why" or "how come", explain the reasoning behind your previous points
+- Keep it conversational - you're having a dialogue, not giving a lecture
+
+If their follow-up is ambiguous (e.g., just "more" or "elaborate"), briefly ask which aspect they'd like to explore further. For example: "I can expand on several points - would you like more detail about [option A], [option B], or something else?"
+
+Keep responses focused and relevant. Don't introduce entirely new topics unless the user steers there.`;
+
+/**
+ * Classify whether a query is casual conversation, a follow-up, or a new research question
+ * @param query - The user's message
+ * @param hasHistory - Whether there's existing conversation history
+ */
+export function classifyQueryIntent(query: string, hasHistory: boolean = false): QueryIntent {
   const trimmed = query.trim().toLowerCase();
 
+  // Check casual patterns first (these apply regardless of history)
   const casualPatterns = [
     /^(hi|hello|hey|howdy|yo|sup)\b/i,
     /^how are you/i,
@@ -40,7 +60,39 @@ export function classifyQueryIntent(query: string): QueryIntent {
     /^(got it|understood|makes sense)[!.?]?$/i,
   ];
 
-  return casualPatterns.some(p => p.test(trimmed)) ? 'casual' : 'research';
+  if (casualPatterns.some(p => p.test(trimmed))) {
+    return 'casual';
+  }
+
+  // Check for follow-up patterns (only if there's conversation history)
+  if (hasHistory) {
+    const followUpPatterns = [
+      /^(tell me more|more details|elaborate|expand on that)/i,
+      /^(what about|how about|and what of|what of)/i,
+      /^(can you explain|explain more|clarify|explain that)/i,
+      /^(why|how come|what do you mean|what does that mean)/i,
+      /^(go on|continue|keep going|go ahead)/i,
+      /^(what else|anything else|more examples|any examples)/i,
+      /^(specifically|in particular|more specifically)/i,
+      /^(and|but|so|also|plus)\s/i,  // Conversation continuers
+      /^more[!.?]?$/i,  // Just "more"
+      /^(really|seriously|interesting)[!.?]?$/i,  // Reactions that invite elaboration
+      /^(like what|such as|for example)[!.?]?$/i,
+      /^(which one|which ones|what are they)/i,
+    ];
+
+    if (followUpPatterns.some(p => p.test(trimmed))) {
+      return 'follow_up';
+    }
+
+    // Short queries with history are likely follow-ups (e.g., "and Sarah?", "the deadline?")
+    const wordCount = trimmed.split(/\s+/).length;
+    if (wordCount <= 4 && (trimmed.includes('?') || trimmed.startsWith('and ') || trimmed.startsWith('what about'))) {
+      return 'follow_up';
+    }
+  }
+
+  return 'research';
 }
 
 export const EXPERT_PERSONAS: Record<ExpertDomain, string> = {

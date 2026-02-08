@@ -3,7 +3,7 @@
 
 import OpenAI from 'openai';
 import { CitationTracker, Citation } from './citations';
-import { detectDomainHybrid, getResearchSystemPrompt, ExpertDomain, classifyQueryIntent, CASUAL_SYSTEM_PROMPT } from './personas';
+import { detectDomainHybrid, getResearchSystemPrompt, ExpertDomain, classifyQueryIntent, CASUAL_SYSTEM_PROMPT, FOLLOW_UP_SYSTEM_PROMPT } from './personas';
 import { searchWeb, formatWebResultsForContext, isWebSearchAvailable, SearchFocus } from './web-search';
 
 // ============= Types =============
@@ -389,11 +389,12 @@ export async function runResearchLoop(
   conversationHistory: Array<{ role: string; content: string }>,
   openai: OpenAI
 ): Promise<ResearchResponse> {
-  // Check if this is a casual conversation (greetings, thanks, etc.)
-  const queryIntent = classifyQueryIntent(query);
+  // Check if this is casual, follow-up, or research
+  const hasHistory = conversationHistory.length > 0;
+  const queryIntent = classifyQueryIntent(query, hasHistory);
 
+  // Handle casual conversation (greetings, thanks, etc.)
   if (queryIntent === 'casual') {
-    // Handle casual conversation without research tools
     const casualResponse = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0.7,
@@ -413,7 +414,37 @@ export async function runResearchLoop(
       answer: casualResponse.choices[0]?.message?.content || "Hey! How can I help you today?",
       citations: [],
       researchSteps: [],
-      expertDomain: 'personal' as ExpertDomain, // No domain badge for casual
+      expertDomain: 'personal' as ExpertDomain,
+      tools_used: [],
+      iterations: 0,
+    };
+  }
+
+  // Handle follow-up questions naturally (no research loop)
+  if (queryIntent === 'follow_up') {
+    // Use recent history for context (last 6 messages to stay focused)
+    const recentHistory = conversationHistory.slice(-6);
+
+    const followUpResponse = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      temperature: 0.7,
+      max_tokens: 800,
+      messages: [
+        { role: 'system', content: FOLLOW_UP_SYSTEM_PROMPT },
+        ...recentHistory.map(m => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        })),
+        { role: 'user', content: query },
+      ],
+    });
+
+    return {
+      status: 'success',
+      answer: followUpResponse.choices[0]?.message?.content || "Could you clarify what you'd like me to expand on?",
+      citations: [], // Follow-ups don't add new citations
+      researchSteps: [],
+      expertDomain: 'personal' as ExpertDomain, // Keep it conversational
       tools_used: [],
       iterations: 0,
     };
