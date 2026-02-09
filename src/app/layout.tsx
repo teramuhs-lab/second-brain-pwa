@@ -9,7 +9,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  themeColor: '#1a1a24',
+  themeColor: '#2d2d3a',
 };
 
 export const metadata: Metadata = {
@@ -63,7 +63,7 @@ export default function RootLayout({
                   var isDark = stored === 'dark' || (stored !== 'light' && prefersDark);
                   var meta = document.querySelector('meta[name="theme-color"]');
                   if (meta) {
-                    meta.setAttribute('content', isDark ? '#1a1a24' : '#f5f5f0');
+                    meta.setAttribute('content', isDark ? '#2d2d3a' : '#f5f5f0');
                   }
                 } catch (e) {}
               })();

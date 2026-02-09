@@ -67,7 +67,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     // Update theme-color meta tag for PWA status bar
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
-      meta.setAttribute('content', isDark ? '#1a1a24' : '#f5f5f0');
+      meta.setAttribute('content', isDark ? '#2d2d3a' : '#f5f5f0');
     }
   }, [theme]);
 
@@ -81,7 +81,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         // Update theme-color meta tag
         const meta = document.querySelector('meta[name="theme-color"]');
         if (meta) {
-          meta.setAttribute('content', e.matches ? '#1a1a24' : '#f5f5f0');
+          meta.setAttribute('content', e.matches ? '#2d2d3a' : '#f5f5f0');
         }
       }
     };

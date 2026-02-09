@@ -1,49 +1,50 @@
 @import "tailwindcss";
 
 /* ============================================
-   SECOND BRAIN — SOFT NIGHT THEME
-   A lighter dark palette for better readability
+   SECOND BRAIN — TWILIGHT THEME
+   A lighter dark palette - "dusk" not "midnight"
+   Zen, modern, highly readable
    ============================================ */
 
 :root {
-  /* Backgrounds - soft charcoal, not near-black */
-  --bg-deep: #1a1a24;
-  --bg-surface: #242430;
-  --bg-elevated: #2e2e3a;
-  --bg-glass: rgba(36, 36, 48, 0.85);
+  /* Backgrounds - twilight gray, not charcoal */
+  --bg-deep: #2d2d3a;
+  --bg-surface: #383848;
+  --bg-elevated: #444456;
+  --bg-glass: rgba(56, 56, 72, 0.88);
 
-  /* Text - warmer, easier on eyes */
-  --text-primary: #f0f0f5;
-  --text-secondary: #b8b8c8;
-  --text-muted: #8888a0;
+  /* Text - high contrast, soft white */
+  --text-primary: #f5f5f8;
+  --text-secondary: #c8c8d8;
+  --text-muted: #9898b0;
 
-  /* Accent colors - softer, zen feel */
-  --accent-cyan: #4dd4e8;
-  --accent-cyan-dim: rgba(77, 212, 232, 0.15);
-  --accent-purple: #b87dff;
-  --accent-green: #5dd39e;
-  --accent-orange: #ffaa5c;
-  --accent-blue: #6b9fff;
-  --accent-red: #ff7b7b;
+  /* Accent colors - vibrant but not harsh */
+  --accent-cyan: #5ee0f2;
+  --accent-cyan-dim: rgba(94, 224, 242, 0.18);
+  --accent-purple: #c48fff;
+  --accent-green: #6ee0a8;
+  --accent-orange: #ffb870;
+  --accent-blue: #7aadff;
+  --accent-red: #ff8a8a;
 
-  /* Gradients - softer */
-  --gradient-aurora: linear-gradient(135deg, rgba(77, 212, 232, 0.3), rgba(184, 125, 255, 0.3), rgba(93, 211, 158, 0.15));
-  --gradient-glow: radial-gradient(ellipse at center, rgba(77, 212, 232, 0.12), transparent 70%);
+  /* Gradients - soft glow */
+  --gradient-aurora: linear-gradient(135deg, rgba(94, 224, 242, 0.25), rgba(196, 143, 255, 0.25), rgba(110, 224, 168, 0.12));
+  --gradient-glow: radial-gradient(ellipse at center, rgba(94, 224, 242, 0.1), transparent 70%);
 
   /* Borders - clearly visible */
-  --border-subtle: rgba(255, 255, 255, 0.12);
-  --border-glass: rgba(255, 255, 255, 0.18);
+  --border-subtle: rgba(255, 255, 255, 0.15);
+  --border-glass: rgba(255, 255, 255, 0.22);
 
-  /* Shadows */
-  --shadow-glow: 0 0 40px rgba(77, 212, 232, 0.12);
-  --shadow-float: 0 8px 32px rgba(0, 0, 0, 0.35);
-  --shadow-deep: 0 24px 64px rgba(0, 0, 0, 0.5);
+  /* Shadows - softer on lighter bg */
+  --shadow-glow: 0 0 40px rgba(94, 224, 242, 0.1);
+  --shadow-float: 0 8px 32px rgba(0, 0, 0, 0.25);
+  --shadow-deep: 0 24px 64px rgba(0, 0, 0, 0.35);
 
-  /* Nav-specific */
-  --nav-bg: rgba(26, 26, 36, 0.92);
-  --nav-border: rgba(255, 255, 255, 0.08);
-  --nav-text: rgba(255, 255, 255, 0.55);
-  --nav-text-active: rgba(255, 255, 255, 0.95);
+  /* Nav - matching twilight feel */
+  --nav-bg: rgba(45, 45, 58, 0.94);
+  --nav-border: rgba(255, 255, 255, 0.1);
+  --nav-text: rgba(255, 255, 255, 0.65);
+  --nav-text-active: rgba(255, 255, 255, 0.98);
 }
 
 /* ============================================
