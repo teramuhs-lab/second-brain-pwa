@@ -50,6 +50,9 @@ export default function RootLayout({
             __html: `
               (function() {
                 try {
+                  // Disable transitions on initial load
+                  document.documentElement.classList.add('no-transitions');
+
                   var stored = localStorage.getItem('theme');
                   var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
@@ -65,6 +68,13 @@ export default function RootLayout({
                   if (meta) {
                     meta.setAttribute('content', isDark ? '#2d2d3a' : '#f5f5f0');
                   }
+
+                  // Enable transitions after page loads
+                  window.addEventListener('load', function() {
+                    setTimeout(function() {
+                      document.documentElement.classList.remove('no-transitions');
+                    }, 100);
+                  });
                 } catch (e) {}
               })();
             `,
