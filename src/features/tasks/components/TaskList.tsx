@@ -58,7 +58,12 @@ function getDateBoundaries() {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const weekEnd = new Date(today);
   weekEnd.setDate(weekEnd.getDate() + 7);
-  return { today, tomorrow, weekEnd };
+  return { now, today, tomorrow, weekEnd };
+}
+
+// Check if a date string includes time
+function hasTime(dateStr: string): boolean {
+  return dateStr.includes('T') && !dateStr.endsWith('T00:00:00');
 }
 
 // Parse date string to Date object
@@ -84,21 +89,29 @@ function sortByPriorityAndDate(a: Entry, b: Entry): number {
 
 // Group and sort tasks for Admin tab
 function groupAdminTasks(tasks: Entry[]): GroupedTasks {
-  const { today, tomorrow, weekEnd } = getDateBoundaries();
+  const { now, today, tomorrow, weekEnd } = getDateBoundaries();
   const groups: GroupedTasks = { overdue: [], today: [], this_week: [], upcoming: [], backlog: [] };
 
   tasks.forEach(task => {
     const dueDate = parseDate(task.due_date);
     if (!dueDate) {
       groups.backlog.push(task);
-    } else if (dueDate < today) {
-      groups.overdue.push(task);
-    } else if (dueDate < tomorrow) {
-      groups.today.push(task);
-    } else if (dueDate < weekEnd) {
-      groups.this_week.push(task);
     } else {
-      groups.upcoming.push(task);
+      // For items with specific time, compare against current time
+      // For date-only items, compare against midnight
+      const isOverdue = task.due_date && hasTime(task.due_date)
+        ? dueDate < now
+        : dueDate < today;
+
+      if (isOverdue) {
+        groups.overdue.push(task);
+      } else if (dueDate < tomorrow) {
+        groups.today.push(task);
+      } else if (dueDate < weekEnd) {
+        groups.this_week.push(task);
+      } else {
+        groups.upcoming.push(task);
+      }
     }
   });
 
@@ -144,7 +157,7 @@ function groupProjectTasks(tasks: Entry[]): GroupedTasks {
 
 // Group and sort tasks for People tab
 function groupPeopleTasks(tasks: Entry[]): GroupedTasks {
-  const { today, tomorrow, weekEnd } = getDateBoundaries();
+  const { now, today, tomorrow, weekEnd } = getDateBoundaries();
   const groups: GroupedTasks = { overdue: [], today: [], this_week: [], upcoming: [], backlog: [] };
 
   tasks.forEach(task => {
@@ -152,14 +165,22 @@ function groupPeopleTasks(tasks: Entry[]): GroupedTasks {
     const followupDate = parseDate(task.due_date);
     if (!followupDate) {
       groups.backlog.push(task);
-    } else if (followupDate < today) {
-      groups.overdue.push(task);
-    } else if (followupDate < tomorrow) {
-      groups.today.push(task);
-    } else if (followupDate < weekEnd) {
-      groups.this_week.push(task);
     } else {
-      groups.upcoming.push(task);
+      // For items with specific time, compare against current time
+      // For date-only items, compare against midnight
+      const isOverdue = task.due_date && hasTime(task.due_date)
+        ? followupDate < now
+        : followupDate < today;
+
+      if (isOverdue) {
+        groups.overdue.push(task);
+      } else if (followupDate < tomorrow) {
+        groups.today.push(task);
+      } else if (followupDate < weekEnd) {
+        groups.this_week.push(task);
+      } else {
+        groups.upcoming.push(task);
+      }
     }
   });
 
