@@ -70,8 +70,48 @@ export function CaptureInput({
   const [speechSupported, setSpeechSupported] = useState(false);
   const [hasUrl, setHasUrl] = useState(false);
   const [reminderDate, setReminderDate] = useState<string | null>(null);
+  const [reminderTime, setReminderTime] = useState<string>('09:00');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  // Time options for reminder (30-minute intervals)
+  const TIME_OPTIONS = [
+    { value: '07:00', label: '7:00 AM' },
+    { value: '07:30', label: '7:30 AM' },
+    { value: '08:00', label: '8:00 AM' },
+    { value: '08:30', label: '8:30 AM' },
+    { value: '09:00', label: '9:00 AM' },
+    { value: '09:30', label: '9:30 AM' },
+    { value: '10:00', label: '10:00 AM' },
+    { value: '10:30', label: '10:30 AM' },
+    { value: '11:00', label: '11:00 AM' },
+    { value: '11:30', label: '11:30 AM' },
+    { value: '12:00', label: '12:00 PM' },
+    { value: '12:30', label: '12:30 PM' },
+    { value: '13:00', label: '1:00 PM' },
+    { value: '13:30', label: '1:30 PM' },
+    { value: '14:00', label: '2:00 PM' },
+    { value: '14:30', label: '2:30 PM' },
+    { value: '15:00', label: '3:00 PM' },
+    { value: '15:30', label: '3:30 PM' },
+    { value: '16:00', label: '4:00 PM' },
+    { value: '16:30', label: '4:30 PM' },
+    { value: '17:00', label: '5:00 PM' },
+    { value: '17:30', label: '5:30 PM' },
+    { value: '18:00', label: '6:00 PM' },
+    { value: '18:30', label: '6:30 PM' },
+    { value: '19:00', label: '7:00 PM' },
+    { value: '19:30', label: '7:30 PM' },
+    { value: '20:00', label: '8:00 PM' },
+    { value: '20:30', label: '8:30 PM' },
+    { value: '21:00', label: '9:00 PM' },
+  ];
+
+  // Format time for display
+  const formatTimeDisplay = (time: string): string => {
+    const option = TIME_OPTIONS.find(t => t.value === time);
+    return option?.label || time;
+  };
 
   // Helper to format date as YYYY-MM-DD
   const formatDate = (date: Date): string => {
@@ -100,6 +140,7 @@ export function CaptureInput({
   // Clear reminder
   const clearReminder = () => {
     setReminderDate(null);
+    setReminderTime('09:00');
     setShowDatePicker(false);
   };
 
@@ -111,12 +152,19 @@ export function CaptureInput({
     const tomorrow = new Date();
     tomorrow.setDate(today.getDate() + 1);
 
-    if (formatDate(date) === formatDate(tomorrow)) return 'Tomorrow';
+    let dateStr: string;
+    if (formatDate(date) === formatDate(tomorrow)) {
+      dateStr = 'Tomorrow';
+    } else {
+      const diffDays = Math.ceil((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays === 7) {
+        dateStr = 'Next week';
+      } else {
+        dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      }
+    }
 
-    const diffDays = Math.ceil((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffDays === 7) return 'Next week';
-
-    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    return `${dateStr} at ${formatTimeDisplay(reminderTime)}`;
   };
 
   // Detect URLs in text
@@ -141,12 +189,24 @@ export function CaptureInput({
       await onUrlSubmit(urlMatch[0]);
     } else {
       // Normal text capture (with optional reminder)
-      await onSubmit(trimmed, reminderDate || undefined);
+      // Combine date and time into ISO datetime string with timezone offset
+      let reminderDateTime: string | undefined;
+      if (reminderDate) {
+        // Get local timezone offset (e.g., -05:00 for EST)
+        const offset = -new Date().getTimezoneOffset();
+        const offsetHours = Math.floor(Math.abs(offset) / 60).toString().padStart(2, '0');
+        const offsetMinutes = (Math.abs(offset) % 60).toString().padStart(2, '0');
+        const offsetSign = offset >= 0 ? '+' : '-';
+        const tzString = `${offsetSign}${offsetHours}:${offsetMinutes}`;
+        reminderDateTime = `${reminderDate}T${reminderTime}:00${tzString}`;
+      }
+      await onSubmit(trimmed, reminderDateTime);
     }
     setText('');
     setReminderDate(null);
+    setReminderTime('09:00');
     setShowDatePicker(false);
-  }, [text, isLoading, onSubmit, onUrlSubmit, reminderDate]);
+  }, [text, isLoading, onSubmit, onUrlSubmit, reminderDate, reminderTime]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -226,7 +286,7 @@ export function CaptureInput({
     <div className="relative">
       {/* Animated border glow when focused, listening, or URL detected */}
       <div
-        className={`absolute -inset-[1px] rounded-2xl bg-gradient-to-r opacity-0 blur-sm transition-opacity duration-500 ${
+        className={`pointer-events-none absolute -inset-[1px] rounded-2xl bg-gradient-to-r opacity-0 blur-sm transition-opacity duration-500 ${
           isListening
             ? 'from-[var(--accent-red)] via-[var(--accent-purple)] to-[var(--accent-red)] opacity-80'
             : hasUrl
@@ -337,7 +397,7 @@ export function CaptureInput({
             <button
               type="button"
               onClick={() => setShowDatePicker(!showDatePicker)}
-              className="flex items-center gap-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] active:bg-[var(--bg-surface)] transition-colors cursor-pointer"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="10" />
@@ -377,6 +437,23 @@ export function CaptureInput({
             }}
             className="rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
           />
+        </div>
+      )}
+
+      {/* Time picker (shown when date is selected) */}
+      {reminderDate && !hasUrl && (
+        <div className="mt-2 flex justify-center">
+          <select
+            value={reminderTime}
+            onChange={(e) => setReminderTime(e.target.value)}
+            className="rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] px-4 py-2 text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-surface)] transition-colors cursor-pointer min-w-[120px]"
+          >
+            {TIME_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 

@@ -88,6 +88,10 @@ export interface Entry {
   created?: string;
   url?: string;
   notes?: string;
+  // People-specific fields
+  context?: string;
+  company?: string;
+  role?: string;
 }
 
 // Detailed Entry types (for future use with direct Notion access)

@@ -63,13 +63,32 @@ export function TaskCard({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [localNotes, setLocalNotes] = useState(task.notes || '');
+  const [localContext, setLocalContext] = useState(task.context || '');
   const startX = useRef(0);
   const currentX = useRef(0);
+  const contextFetchedRef = useRef(false);
 
   const currentCategory = DATABASE_TO_CATEGORY[database];
   const statusOptions = STATUS_OPTIONS[database] || ['Todo', 'Done'];
   const completedStatus = database === 'projects' ? 'Complete' : database === 'people' ? 'Dormant' : 'Done';
   const isCompleted = task.status === completedStatus;
+
+  // Fetch context for People entries on mount (for display in list)
+  useEffect(() => {
+    if (database === 'people' && !localContext && !contextFetchedRef.current) {
+      contextFetchedRef.current = true;
+      fetchEntry(task.id).then((res) => {
+        if (res.status === 'success' && res.entry) {
+          if (res.entry.context) {
+            setLocalContext(res.entry.context as string);
+          }
+          if (res.entry.notes && !localNotes) {
+            setLocalNotes(res.entry.notes as string);
+          }
+        }
+      });
+    }
+  }, [database, task.id, localContext, localNotes]);
 
   // Fetch notes when floating card opens (n8n fetch doesn't return notes)
   useEffect(() => {
@@ -193,9 +212,23 @@ export function TaskCard({
 
   // Parse date string as local time (not UTC)
   const parseLocalDate = (dateStr: string) => {
+    // Handle both "2026-02-07" and "2026-02-07T14:00:00" formats
+    if (dateStr.includes('T')) {
+      return new Date(dateStr);
+    }
     // "2026-02-07" -> parse as local midnight, not UTC
     const [year, month, day] = dateStr.split('-').map(Number);
     return new Date(year, month - 1, day);
+  };
+
+  const hasTime = (dateStr?: string) => {
+    if (!dateStr) return false;
+    return dateStr.includes('T') && !dateStr.endsWith('T00:00:00');
+  };
+
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   };
 
   const formatDate = (dateStr?: string) => {
@@ -206,9 +239,23 @@ export function TaskCard({
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    if (date.getTime() === today.getTime()) return 'Today';
-    if (date.getTime() === tomorrow.getTime()) return 'Tomorrow';
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    let dateDisplay: string;
+    const dateOnly = new Date(date);
+    dateOnly.setHours(0, 0, 0, 0);
+
+    if (dateOnly.getTime() === today.getTime()) {
+      dateDisplay = 'Today';
+    } else if (dateOnly.getTime() === tomorrow.getTime()) {
+      dateDisplay = 'Tomorrow';
+    } else {
+      dateDisplay = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    // Add time if present
+    if (hasTime(dateStr)) {
+      return `${dateDisplay} · ${formatTime(dateStr)}`;
+    }
+    return dateDisplay;
   };
 
   const isOverdue = task.due_date && (() => {
@@ -283,6 +330,13 @@ export function TaskCard({
                 <h3 className={`text-[15px] font-medium text-[var(--text-primary)] line-clamp-2 leading-relaxed ${isCompleted ? 'line-through opacity-50' : ''}`}>
                   {task.title}
                 </h3>
+
+                {/* Context for People entries - show original capture text */}
+                {database === 'people' && localContext && (
+                  <p className="mt-0.5 text-[13px] text-[var(--text-secondary)] line-clamp-1 italic">
+                    &ldquo;{localContext}&rdquo;
+                  </p>
+                )}
 
                 {/* Subtle metadata row */}
                 <div className="mt-1 flex items-center gap-3">
