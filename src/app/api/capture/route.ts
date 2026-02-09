@@ -156,10 +156,14 @@ export async function POST(request: NextRequest) {
           },
         ],
       },
-      Status: {
-        select: { name: defaultStatus },
-      },
     };
+
+    // Set status/maturity based on category (Ideas uses Maturity, others use Status)
+    if (category === 'Idea') {
+      properties['Maturity'] = { select: { name: defaultStatus } };
+    } else {
+      properties['Status'] = { select: { name: defaultStatus } };
+    }
 
     // Add category-specific properties
     if (category === 'Admin') {
@@ -183,7 +187,7 @@ export async function POST(request: NextRequest) {
       }
     } else if (category === 'Idea') {
       properties['Category'] = { select: { name: 'Life' } };
-      properties['Maturity'] = { select: { name: 'Spark' } };
+      // Maturity already set above via defaultStatus
       if (extracted_data.raw_insight) {
         properties['Raw Insight'] = {
           rich_text: [{ text: { content: extracted_data.raw_insight } }],
