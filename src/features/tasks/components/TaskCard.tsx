@@ -265,8 +265,14 @@ export function TaskCard({
 
   const isOverdue = task.due_date && (() => {
     const dueDate = parseLocalDate(task.due_date);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // For items with specific time, compare against current time
+    // For date-only items, compare against midnight
+    if (hasTime(task.due_date)) {
+      return dueDate < now;
+    }
     return dueDate < today;
   })();
 
