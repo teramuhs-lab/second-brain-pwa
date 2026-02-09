@@ -230,7 +230,7 @@ export function CaptureInput({
           isListening
             ? 'from-[var(--accent-red)] via-[var(--accent-purple)] to-[var(--accent-red)] opacity-80'
             : hasUrl
-              ? 'from-[#10b981] via-[#059669] to-[#10b981] opacity-70'
+              ? 'from-[var(--accent-green)] via-[var(--accent-green)] to-[var(--accent-green)] opacity-70'
               : isFocused
                 ? 'from-[var(--accent-cyan)] via-[var(--accent-purple)] to-[var(--accent-cyan)] opacity-60'
                 : ''
@@ -290,8 +290,8 @@ export function CaptureInput({
             disabled={!text.trim() || isLoading}
             className={`flex h-10 w-10 items-center justify-center rounded-xl shadow-lg transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-30 disabled:hover:scale-100 disabled:hover:shadow-lg ${
               hasUrl
-                ? 'bg-gradient-to-br from-[#10b981] to-[#059669] text-white hover:shadow-[0_0_20px_rgba(16,185,129,0.4)]'
-                : 'bg-gradient-to-br from-[var(--accent-cyan)] to-[#00a8cc] text-[var(--bg-deep)] hover:shadow-[0_0_20px_rgba(0,212,255,0.4)]'
+                ? 'bg-[var(--accent-green)] text-white hover:brightness-110'
+                : 'bg-[var(--accent-cyan)] text-[var(--bg-deep)] hover:brightness-110'
             }`}
             aria-label={hasUrl ? 'Analyze link' : 'Send'}
             title={hasUrl ? 'Analyze link' : 'Capture thought'}

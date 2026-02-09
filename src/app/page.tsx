@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from 'react';
 import { CaptureInput } from '@/components/CaptureInput';
 import { ConfirmCard } from '@/components/ConfirmCard';
 import { LinkSummaryCard } from '@/components/LinkSummaryCard';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { captureThought, recategorize, processUrl, sendSlackNotification } from '@/lib/api';
 import type { Category, ConfirmationState, UrlProcessResult } from '@/lib/types';
 
@@ -144,12 +145,17 @@ export default function CapturePage() {
     <div className="mx-auto max-w-lg px-5 pt-12">
       {/* Header - zen styling */}
       <header className="mb-10 animate-fade-up">
-        <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
-          Capture
-        </h1>
-        <p className="mt-1 text-sm text-[var(--text-muted)]/70">
-          Thoughts become knowledge
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
+              Capture
+            </h1>
+            <p className="mt-1 text-sm text-[var(--text-muted)]/70">
+              Thoughts become knowledge
+            </p>
+          </div>
+          <ThemeToggle />
+        </div>
       </header>
 
       {/* Capture Input */}

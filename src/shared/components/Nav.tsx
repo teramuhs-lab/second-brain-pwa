@@ -79,10 +79,10 @@ export function Nav() {
     left: 0,
     right: 0,
     width: '100%',
-    background: 'rgba(8, 8, 12, 0.85)',
+    background: 'var(--nav-bg)',
     backdropFilter: 'blur(20px)',
     WebkitBackdropFilter: 'blur(20px)',
-    borderTop: '1px solid rgba(255,255,255,0.04)',
+    borderTop: '1px solid var(--nav-border)',
     paddingBottom: 'env(safe-area-inset-bottom, 0)',
     zIndex: 50,
   };
@@ -118,7 +118,7 @@ export function Nav() {
               href={item.href}
               style={{
                 ...itemStyle,
-                color: isActive ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.5)',
+                color: isActive ? 'var(--nav-text-active)' : 'var(--nav-text)',
                 opacity: isActive ? 1 : 0.9,
               }}
             >

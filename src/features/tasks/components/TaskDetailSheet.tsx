@@ -150,7 +150,7 @@ export function TaskDetailSheet({
 
       {/* Centered Modal Card */}
       <div
-        className={`fixed inset-x-4 top-1/2 z-50 -translate-y-1/2 bg-[#1a1a24] rounded-2xl shadow-2xl border border-gray-700 transition-all duration-200 ${
+        className={`fixed inset-x-4 top-1/2 z-50 -translate-y-1/2 bg-[var(--bg-deep)] rounded-2xl shadow-2xl border border-[var(--border-subtle)] transition-all duration-200 ${
           isAnimating ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'
         }`}
       >

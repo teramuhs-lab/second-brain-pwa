@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode } from 'react';
+import { ThemeProvider } from './ThemeProvider';
 import { ToastProvider } from './Toast';
 import { ErrorBoundary } from './ErrorBoundary';
 import { QuickCapture } from './QuickCapture';
@@ -8,10 +9,12 @@ import { QuickCapture } from './QuickCapture';
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <ErrorBoundary>
-      <ToastProvider>
-        {children}
-        <QuickCapture />
-      </ToastProvider>
+      <ThemeProvider>
+        <ToastProvider>
+          {children}
+          <QuickCapture />
+        </ToastProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

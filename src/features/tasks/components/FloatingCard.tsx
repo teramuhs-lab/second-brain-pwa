@@ -143,9 +143,9 @@ export function FloatingCard({ isOpen, anchorRef, onClose, children }: FloatingC
         style={{
           top: position.top,
           left: position.left,
-          background: 'rgba(26, 26, 36, 0.98)',
+          background: 'var(--bg-glass)',
           backdropFilter: 'blur(20px)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
+          border: '1px solid var(--border-subtle)',
           animation: 'floatIn 0.2s ease-out'
         }}
       >
@@ -155,11 +155,11 @@ export function FloatingCard({ isOpen, anchorRef, onClose, children }: FloatingC
           style={{
             left: position.arrowLeft - 8,
             [position.side === 'bottom' ? 'top' : 'bottom']: -8,
-            background: 'rgba(26, 26, 36, 0.98)',
-            borderLeft: position.side === 'bottom' ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
-            borderTop: position.side === 'bottom' ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
-            borderRight: position.side === 'top' ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
-            borderBottom: position.side === 'top' ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
+            background: 'var(--bg-glass)',
+            borderLeft: position.side === 'bottom' ? '1px solid var(--border-subtle)' : 'none',
+            borderTop: position.side === 'bottom' ? '1px solid var(--border-subtle)' : 'none',
+            borderRight: position.side === 'top' ? '1px solid var(--border-subtle)' : 'none',
+            borderBottom: position.side === 'top' ? '1px solid var(--border-subtle)' : 'none',
           }}
         />
 

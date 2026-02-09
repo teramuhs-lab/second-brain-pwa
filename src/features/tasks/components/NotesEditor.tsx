@@ -99,7 +99,7 @@ export function NotesEditor({
       className="fixed inset-0 flex flex-col"
       style={{
         zIndex: 60,
-        background: 'var(--bg-deep, #0a0a0f)',
+        background: 'var(--bg-deep)',
         animation: 'slideUp 0.25s ease-out'
       }}
     >
@@ -107,8 +107,8 @@ export function NotesEditor({
       <div
         className="flex items-center justify-between px-4 py-3"
         style={{
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-          background: 'rgba(26, 26, 36, 0.8)',
+          borderBottom: '1px solid var(--border-subtle)',
+          background: 'var(--bg-glass)',
           backdropFilter: 'blur(10px)'
         }}
       >

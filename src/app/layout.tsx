@@ -9,7 +9,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  themeColor: '#0a0a0f',
+  themeColor: '#1a1a24',
 };
 
 export const metadata: Metadata = {
@@ -44,6 +44,32 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+        {/* Theme flash prevention - runs before React hydrates */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var stored = localStorage.getItem('theme');
+                  var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+                  if (stored === 'light' || (!stored && !prefersDark)) {
+                    document.documentElement.classList.add('light');
+                  } else if (stored === 'dark') {
+                    document.documentElement.classList.add('dark');
+                  }
+
+                  // Update theme-color meta tag
+                  var isDark = stored === 'dark' || (stored !== 'light' && prefersDark);
+                  var meta = document.querySelector('meta[name="theme-color"]');
+                  if (meta) {
+                    meta.setAttribute('content', isDark ? '#1a1a24' : '#f5f5f0');
+                  }
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
       </head>
       <body>
         <Providers>
