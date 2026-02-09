@@ -86,12 +86,42 @@ export function TaskDetailSheet({
 
   if (!isVisible || !task) return null;
 
-  const isOverdue = task.due_date && new Date(task.due_date) < new Date();
+  // Parse date string as local time (not UTC) for date-only strings
+  const parseLocalDate = (dateStr: string) => {
+    if (dateStr.includes('T')) {
+      return new Date(dateStr);
+    }
+    // Date-only string like "2026-02-10" - parse as LOCAL midnight
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  };
+
+  // Check if date string has a specific time (not midnight)
+  const hasTime = (dateStr: string) => {
+    if (!dateStr.includes('T')) return false;
+    const timeMatch = dateStr.match(/T(\d{2}):(\d{2})/);
+    if (!timeMatch) return false;
+    const hours = parseInt(timeMatch[1], 10);
+    const minutes = parseInt(timeMatch[2], 10);
+    return hours !== 0 || minutes !== 0;
+  };
+
+  const isOverdue = task.due_date && (() => {
+    const dueDate = parseLocalDate(task.due_date);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // For items with specific time, compare against current time
+    if (hasTime(task.due_date)) {
+      return dueDate < now;
+    }
+    return dueDate < today;
+  })();
+
   const isCompleted = task.status === completedStatus;
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return null;
-    const date = new Date(dateStr);
+    const date = parseLocalDate(dateStr);
     return date.toLocaleDateString('en-US', {
       weekday: 'long',
       month: 'long',
@@ -184,7 +214,7 @@ export function TaskDetailSheet({
               <>
                 <span>•</span>
                 <span className={isOverdue ? 'text-red-400' : ''}>
-                  {isOverdue && '⚠ '}{new Date(task.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  {isOverdue && '⚠ '}{parseLocalDate(task.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                 </span>
               </>
             )}

@@ -187,8 +187,18 @@ export function SearchDetailModal({
     }
   };
 
+  // Parse date string as local time for date-only strings
+  const parseLocalDate = (dateStr: string) => {
+    if (dateStr.includes('T')) {
+      return new Date(dateStr);
+    }
+    // Date-only string like "2026-02-10" - parse as LOCAL midnight
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  };
+
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', {
+    return parseLocalDate(dateStr).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
