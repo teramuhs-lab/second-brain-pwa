@@ -74,11 +74,20 @@ function hasTime(dateStr: string): boolean {
   return hours !== 0 || minutes !== 0;
 }
 
-// Parse date string to Date object
+// Parse date string to Date object (handling timezone correctly)
 function parseDate(dateStr: string | undefined): Date | null {
   if (!dateStr) return null;
-  const date = new Date(dateStr);
-  return isNaN(date.getTime()) ? null : date;
+
+  // If it has a time component (T), parse normally (includes timezone)
+  if (dateStr.includes('T')) {
+    const date = new Date(dateStr);
+    return isNaN(date.getTime()) ? null : date;
+  }
+
+  // Date-only string like "2026-02-10" - parse as LOCAL midnight, not UTC
+  const [year, month, day] = dateStr.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
 }
 
 // Sort by priority, then by date
