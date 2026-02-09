@@ -61,9 +61,17 @@ function getDateBoundaries() {
   return { now, today, tomorrow, weekEnd };
 }
 
-// Check if a date string includes time
+// Check if a date string includes a meaningful time (not midnight)
 function hasTime(dateStr: string): boolean {
-  return dateStr.includes('T') && !dateStr.endsWith('T00:00:00');
+  if (!dateStr.includes('T')) return false;
+  // Extract time portion and check if it's not midnight
+  // Handles formats like: 2026-02-09T16:30:00.000-05:00 or 2026-02-09T00:00:00.000+01:00
+  const timeMatch = dateStr.match(/T(\d{2}):(\d{2})/);
+  if (!timeMatch) return false;
+  const hours = parseInt(timeMatch[1], 10);
+  const minutes = parseInt(timeMatch[2], 10);
+  // Consider it "has time" only if not midnight (00:00)
+  return hours !== 0 || minutes !== 0;
 }
 
 // Parse date string to Date object

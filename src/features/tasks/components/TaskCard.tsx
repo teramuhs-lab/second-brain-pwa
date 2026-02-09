@@ -222,8 +222,13 @@ export function TaskCard({
   };
 
   const hasTime = (dateStr?: string) => {
-    if (!dateStr) return false;
-    return dateStr.includes('T') && !dateStr.endsWith('T00:00:00');
+    if (!dateStr || !dateStr.includes('T')) return false;
+    // Extract time portion and check if it's not midnight
+    const timeMatch = dateStr.match(/T(\d{2}):(\d{2})/);
+    if (!timeMatch) return false;
+    const hours = parseInt(timeMatch[1], 10);
+    const minutes = parseInt(timeMatch[2], 10);
+    return hours !== 0 || minutes !== 0;
   };
 
   const formatTime = (dateStr: string) => {
