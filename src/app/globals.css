@@ -5,16 +5,16 @@
    ============================================ */
 
 :root {
-  /* Core palette */
-  --bg-deep: #0a0a0f;
-  --bg-surface: #12121a;
-  --bg-elevated: #1a1a24;
-  --bg-glass: rgba(26, 26, 36, 0.7);
+  /* Core palette - slightly lifted for outdoor readability */
+  --bg-deep: #0d0d14;
+  --bg-surface: #16161f;
+  --bg-elevated: #1e1e2a;
+  --bg-glass: rgba(30, 30, 42, 0.75);
 
-  /* Text hierarchy */
-  --text-primary: #f0f0f5;
-  --text-secondary: #8888a0;
-  --text-muted: #55556a;
+  /* Text hierarchy - improved contrast for bright light */
+  --text-primary: #f5f5fa;
+  --text-secondary: #a0a0b8;
+  --text-muted: #6e6e85;
 
   /* Accent colors */
   --accent-cyan: #00d4ff;
@@ -29,9 +29,9 @@
   --gradient-aurora: linear-gradient(135deg, rgba(0, 212, 255, 0.4), rgba(168, 85, 247, 0.4), rgba(34, 197, 94, 0.2));
   --gradient-glow: radial-gradient(ellipse at center, rgba(0, 212, 255, 0.15), transparent 70%);
 
-  /* Borders */
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-glass: rgba(255, 255, 255, 0.1);
+  /* Borders - more visible */
+  --border-subtle: rgba(255, 255, 255, 0.10);
+  --border-glass: rgba(255, 255, 255, 0.15);
 
   /* Shadows */
   --shadow-glow: 0 0 40px rgba(0, 212, 255, 0.15);

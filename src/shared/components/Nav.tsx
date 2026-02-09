@@ -118,8 +118,8 @@ export function Nav() {
               href={item.href}
               style={{
                 ...itemStyle,
-                color: isActive ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.25)',
-                opacity: isActive ? 1 : 0.8,
+                color: isActive ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.5)',
+                opacity: isActive ? 1 : 0.9,
               }}
             >
               {item.icon}

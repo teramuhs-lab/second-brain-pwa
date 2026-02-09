@@ -373,7 +373,7 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
                       </span>
                       <button
                         onClick={clearReminder}
-                        className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] underline"
+                        className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] underline"
                       >
                         Clear
                       </button>
@@ -382,7 +382,7 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => setShowDatePicker(!showDatePicker)}
-                        className="flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                        className="flex items-center gap-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                       >
                         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <circle cx="12" cy="12" r="10" />
@@ -398,13 +398,13 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
                     <div className="mt-2 flex flex-wrap gap-2">
                       <button
                         onClick={setTomorrow}
-                        className="rounded-lg bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors"
+                        className="rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)] transition-colors"
                       >
                         Tomorrow
                       </button>
                       <button
                         onClick={setNextWeek}
-                        className="rounded-lg bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors"
+                        className="rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)] transition-colors"
                       >
                         Next week
                       </button>
@@ -417,7 +417,7 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
                             setShowDatePicker(false);
                           }
                         }}
-                        className="rounded-lg bg-[var(--bg-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
+                        className="rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
                       />
                     </div>
                   )}

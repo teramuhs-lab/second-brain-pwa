@@ -103,7 +103,7 @@ export function ConfirmCard({
         {autoDismiss > 0 && (
           <button
             onClick={onDismiss}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-xs font-mono text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--text-secondary)]"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-xs font-mono text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
           >
             {timeLeft}
           </button>
