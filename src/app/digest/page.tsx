@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, ReactNode } from 'react';
-import { fetchDigest } from '@/lib/api';
+import { fetchDigest, markDone, snoozeEntry } from '@/lib/api';
 import type { DailyDigestResponse, WeeklyDigestResponse } from '@/lib/types';
 
 interface StaleItem {
@@ -13,9 +13,17 @@ interface StaleItem {
   lastEdited: string;
 }
 
+interface DueTodayItem {
+  id: string;
+  title: string;
+  category: string;
+  time?: string;
+}
+
 interface InsightsData {
   status: string;
   staleItems: StaleItem[];
+  dueToday: DueTodayItem[];
   weeklyStats: {
     totalCaptures: number;
     byCategory: Record<string, number>;
@@ -24,6 +32,14 @@ interface InsightsData {
   };
   aiInsights: string | null;
 }
+
+// Map category to database name for API calls
+const CATEGORY_TO_DB: Record<string, string> = {
+  People: 'people',
+  Projects: 'projects',
+  Ideas: 'ideas',
+  Admin: 'admin',
+};
 
 // Helper to format inline markdown (bold, etc.)
 function formatInlineMarkdown(text: string): ReactNode[] {
@@ -108,6 +124,69 @@ export default function DigestPage() {
   const [insights, setInsights] = useState<InsightsData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Handle completing a stale item
+  const handleComplete = async (item: StaleItem) => {
+    const db = CATEGORY_TO_DB[item.category];
+    if (!db) return;
+
+    setActionLoading(item.id);
+    try {
+      await markDone(item.id, db);
+      // Remove from local state
+      setInsights(prev => prev ? {
+        ...prev,
+        staleItems: prev.staleItems.filter(i => i.id !== item.id)
+      } : null);
+    } catch (err) {
+      console.error('Failed to complete item:', err);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Handle snoozing a stale item (1 week from now)
+  const handleSnooze = async (item: StaleItem) => {
+    const db = CATEGORY_TO_DB[item.category];
+    if (!db) return;
+
+    setActionLoading(item.id);
+    try {
+      const oneWeekFromNow = new Date();
+      oneWeekFromNow.setDate(oneWeekFromNow.getDate() + 7);
+      await snoozeEntry(item.id, db, oneWeekFromNow);
+      // Remove from local state
+      setInsights(prev => prev ? {
+        ...prev,
+        staleItems: prev.staleItems.filter(i => i.id !== item.id)
+      } : null);
+    } catch (err) {
+      console.error('Failed to snooze item:', err);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Handle completing a due today item
+  const handleCompleteDueToday = async (item: DueTodayItem) => {
+    const db = CATEGORY_TO_DB[item.category];
+    if (!db) return;
+
+    setActionLoading(item.id);
+    try {
+      await markDone(item.id, db);
+      // Remove from local state
+      setInsights(prev => prev ? {
+        ...prev,
+        dueToday: prev.dueToday.filter(i => i.id !== item.id)
+      } : null);
+    } catch (err) {
+      console.error('Failed to complete item:', err);
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const loadDigest = useCallback(async (type: 'daily' | 'weekly') => {
     setIsLoading(true);
@@ -344,81 +423,159 @@ export default function DigestPage() {
         {activeTab === 'insights' && (
           /* Insights Tab */
           <div className="space-y-4">
-            {/* AI Insights Card */}
-            <div className="glass-card p-6">
-              <div className="mb-4">
-                <h2 className="text-lg font-semibold text-[var(--text-primary)]">AI Insights</h2>
-                <p className="text-sm text-[var(--text-muted)]/70">Patterns and observations</p>
+            {isLoading && (
+              <div className="glass-card p-6">
+                <DigestSkeleton />
               </div>
+            )}
 
-              {isLoading && <DigestSkeleton />}
-
-              {error && !isLoading && (
+            {error && !isLoading && (
+              <div className="glass-card p-6">
                 <div className="rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] p-4 text-center">
                   <p className="text-sm text-[var(--text-secondary)] mb-2">{error}</p>
                   <button onClick={handleRefresh} className="text-sm text-[var(--text-muted)]/70 hover:text-[var(--text-secondary)]">
                     Try again
                   </button>
                 </div>
-              )}
+              </div>
+            )}
 
-              {insights && !isLoading && (
-                <>
-                  {/* Weekly Stats */}
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    <span className="rounded-full bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
-                      {insights.weeklyStats.totalCaptures} captures this week
-                    </span>
-                    <span className="rounded-full bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
-                      {insights.weeklyStats.completedTasks} completed
-                    </span>
-                    <span className="rounded-full bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
-                      {insights.weeklyStats.newIdeas} new ideas
-                    </span>
-                  </div>
-
-                  {/* Category breakdown - text only, no emojis */}
-                  <div className="grid grid-cols-4 gap-2 mb-4">
-                    {Object.entries(insights.weeklyStats.byCategory).map(([cat, count]) => (
-                      <div key={cat} className="text-center rounded-lg bg-[var(--bg-elevated)] p-2">
-                        <span className="text-sm font-medium text-[var(--text-secondary)] block">
-                          {count}
-                        </span>
-                        <span className="text-sm text-[var(--text-muted)]/70">{cat}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* AI Analysis */}
-                  {insights.aiInsights && (
-                    <div className="rounded-xl bg-[var(--bg-elevated)] p-4">
-                      <DigestContent content={insights.aiInsights} />
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Stale Items Alert */}
-            {insights && insights.staleItems.length > 0 && (
-              <div className="glass-card p-6">
+            {/* Due Today Section */}
+            {insights && insights.dueToday && insights.dueToday.length > 0 && !isLoading && (
+              <div className="glass-card p-6 border-l-4 border-l-[var(--accent-cyan)]">
                 <div className="mb-4">
-                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Needs Attention</h2>
-                  <p className="text-sm text-[var(--text-muted)]/70">{insights.staleItems.length} items not touched in 2+ weeks</p>
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Due Today</h2>
+                  <p className="text-sm text-[var(--text-muted)]/70">{insights.dueToday.length} item{insights.dueToday.length !== 1 ? 's' : ''} to focus on</p>
                 </div>
 
                 <div className="space-y-2">
-                  {insights.staleItems.slice(0, 5).map((item) => (
-                    <div key={item.id} className="flex items-center justify-between rounded-lg bg-[var(--bg-elevated)] p-3">
+                  {insights.dueToday.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`flex items-center justify-between rounded-lg bg-[var(--bg-elevated)] p-3 ${actionLoading === item.id ? 'opacity-50' : ''}`}
+                    >
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-sm text-[var(--text-muted)]/70 shrink-0">
+                        <span className="text-xs text-[var(--accent-cyan)] shrink-0">
                           {item.category}
                         </span>
                         <span className="text-sm text-[var(--text-primary)] truncate">{item.title}</span>
                       </div>
-                      <span className="shrink-0 text-sm text-[var(--text-muted)]/70 ml-2">
-                        {item.daysSinceEdit}d ago
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        {item.time && (
+                          <span className="text-xs text-[var(--text-muted)]">{item.time}</span>
+                        )}
+                        <button
+                          onClick={() => handleCompleteDueToday(item)}
+                          disabled={actionLoading === item.id}
+                          className="p-1.5 rounded-lg bg-green-900/30 text-green-400 hover:bg-green-900/50 transition-colors"
+                          title="Mark done"
+                        >
+                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* AI Insights Card */}
+            {insights && !isLoading && (
+              <div className="glass-card p-6">
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">AI Insights</h2>
+                  <p className="text-sm text-[var(--text-muted)]/70">Patterns and observations</p>
+                </div>
+
+                {/* Weekly Stats */}
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <span className="rounded-full bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
+                    {insights.weeklyStats.totalCaptures} captures this week
+                  </span>
+                  <span className="rounded-full bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
+                    {insights.weeklyStats.completedTasks} completed
+                  </span>
+                  <span className="rounded-full bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">
+                    {insights.weeklyStats.newIdeas} new ideas
+                  </span>
+                </div>
+
+                {/* Category breakdown - clickable for future drill-down */}
+                <div className="grid grid-cols-4 gap-2 mb-4">
+                  {Object.entries(insights.weeklyStats.byCategory).map(([cat, count]) => (
+                    <button
+                      key={cat}
+                      className="text-center rounded-lg bg-[var(--bg-elevated)] p-2 hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
+                      onClick={() => {
+                        // TODO: Add category drill-down modal
+                        console.log('Drill down to:', cat);
+                      }}
+                    >
+                      <span className="text-sm font-medium text-[var(--text-secondary)] block">
+                        {count}
                       </span>
+                      <span className="text-sm text-[var(--text-muted)]/70">{cat}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* AI Analysis */}
+                {insights.aiInsights && (
+                  <div className="rounded-xl bg-[var(--bg-elevated)] p-4">
+                    <DigestContent content={insights.aiInsights} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Stale Items Alert with Actions */}
+            {insights && insights.staleItems.length > 0 && !isLoading && (
+              <div className="glass-card p-6">
+                <div className="mb-4">
+                  <h2 className="text-lg font-semibold text-[var(--text-primary)]">Needs Attention</h2>
+                  <p className="text-sm text-[var(--text-muted)]/70">{insights.staleItems.length} item{insights.staleItems.length !== 1 ? 's' : ''} not touched in 2+ weeks</p>
+                </div>
+
+                <div className="space-y-2">
+                  {insights.staleItems.slice(0, 5).map((item) => (
+                    <div
+                      key={item.id}
+                      className={`flex items-center justify-between rounded-lg bg-[var(--bg-elevated)] p-3 ${actionLoading === item.id ? 'opacity-50' : ''}`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs text-[var(--text-muted)]/70 shrink-0">
+                          {item.category}
+                        </span>
+                        <span className="text-sm text-[var(--text-primary)] truncate">{item.title}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 ml-2">
+                        <span className="text-xs text-[var(--text-muted)]">{item.daysSinceEdit}d</span>
+                        {/* Snooze button */}
+                        <button
+                          onClick={() => handleSnooze(item)}
+                          disabled={actionLoading === item.id}
+                          className="p-1.5 rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                          title="Snooze 1 week"
+                        >
+                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <path d="M12 6v6l4 2"/>
+                          </svg>
+                        </button>
+                        {/* Complete button */}
+                        <button
+                          onClick={() => handleComplete(item)}
+                          disabled={actionLoading === item.id}
+                          className="p-1.5 rounded-lg bg-green-900/30 text-green-400 hover:bg-green-900/50 transition-colors"
+                          title="Mark done"
+                        >
+                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

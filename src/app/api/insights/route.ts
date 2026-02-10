@@ -35,6 +35,21 @@ interface WeeklyStats {
   topTopics: string[];
 }
 
+interface DueTodayItem {
+  id: string;
+  title: string;
+  category: string;
+  time?: string;
+}
+
+// Map category to database name for actions
+const CATEGORY_TO_DB: Record<string, string> = {
+  People: 'people',
+  Projects: 'projects',
+  Ideas: 'ideas',
+  Admin: 'admin',
+};
+
 function extractTitle(properties: Record<string, unknown>): string {
   const titleProps = ['Name', 'Title', 'Task'];
   for (const prop of titleProps) {
@@ -49,6 +64,25 @@ function extractTitle(properties: Record<string, unknown>): string {
 function extractStatus(properties: Record<string, unknown>): string | undefined {
   const statusProp = properties['Status'] as { select?: { name: string } } | undefined;
   return statusProp?.select?.name;
+}
+
+function extractDueDate(properties: Record<string, unknown>): string | undefined {
+  // Check both "Due Date" and "Next Follow-up" fields
+  const dueDateProp = properties['Due Date'] as { date?: { start: string } } | undefined;
+  const followUpProp = properties['Next Follow-up'] as { date?: { start: string } } | undefined;
+  return dueDateProp?.date?.start || followUpProp?.date?.start;
+}
+
+function extractTimeFromDate(dateStr: string): string | undefined {
+  if (!dateStr.includes('T')) return undefined;
+  const timeMatch = dateStr.match(/T(\d{2}):(\d{2})/);
+  if (!timeMatch) return undefined;
+  const hours = parseInt(timeMatch[1], 10);
+  const minutes = parseInt(timeMatch[2], 10);
+  if (hours === 0 && minutes === 0) return undefined; // Midnight = no specific time
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours % 12 || 12;
+  return minutes === 0 ? `${displayHours} ${ampm}` : `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
 }
 
 function extractText(properties: Record<string, unknown>): string {
@@ -136,6 +170,43 @@ export async function GET() {
     // Sort by staleness
     staleItems.sort((a, b) => b.daysSinceEdit - a.daysSinceEdit);
 
+    // Find items due today
+    const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
+    const dueToday: DueTodayItem[] = [];
+
+    const checkDueToday = (pages: NotionPage[], category: string) => {
+      for (const page of pages) {
+        const dueDate = extractDueDate(page.properties);
+        if (!dueDate) continue;
+
+        const dueDateOnly = dueDate.split('T')[0];
+        if (dueDateOnly === today) {
+          const status = extractStatus(page.properties);
+          // Skip completed items
+          if (status === 'Done' || status === 'Complete' || status === 'Dormant') continue;
+
+          dueToday.push({
+            id: page.id,
+            title: extractTitle(page.properties),
+            category,
+            time: extractTimeFromDate(dueDate),
+          });
+        }
+      }
+    };
+
+    checkDueToday(people, 'People');
+    checkDueToday(projects, 'Projects');
+    checkDueToday(admin, 'Admin');
+
+    // Sort due today by time (items with time first, then by time)
+    dueToday.sort((a, b) => {
+      if (a.time && !b.time) return -1;
+      if (!a.time && b.time) return 1;
+      if (a.time && b.time) return a.time.localeCompare(b.time);
+      return 0;
+    });
+
     // Calculate weekly stats
     const weeklyStats: WeeklyStats = {
       totalCaptures: 0,
@@ -178,39 +249,40 @@ export async function GET() {
 
     // Generate AI insights if we have data
     let aiInsights: string | null = null;
-    if (OPENAI_API_KEY && (weeklyStats.totalCaptures > 0 || staleItems.length > 0)) {
+    if (OPENAI_API_KEY && (weeklyStats.totalCaptures > 0 || staleItems.length > 0 || dueToday.length > 0)) {
       const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
       try {
         const completion = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
-          temperature: 0.5,
+          temperature: 0.7,
           messages: [
             {
               role: 'system',
-              content: 'You are a helpful assistant analyzing a user\'s personal knowledge base activity. Be concise, actionable, and encouraging.',
+              content: 'You are my personal knowledge assistant. Be direct, specific, and reference actual items by name. No generic advice.',
             },
             {
               role: 'user',
-              content: `Analyze my Second Brain activity this week:
+              content: `Analyze my Second Brain activity:
 
-Weekly Stats:
-- Total new captures: ${weeklyStats.totalCaptures}
-- By category: People (${weeklyStats.byCategory.People}), Projects (${weeklyStats.byCategory.Projects}), Ideas (${weeklyStats.byCategory.Ideas}), Tasks (${weeklyStats.byCategory.Admin})
-- Completed tasks: ${weeklyStats.completedTasks}
-- New ideas: ${weeklyStats.newIdeas}
+TODAY'S PRIORITY:
+${dueToday.length > 0 ? dueToday.map(i => `- "${i.title}" (${i.category}${i.time ? ` at ${i.time}` : ''})`).join('\n') : '- Nothing due today'}
 
-Stale items (not touched in 2+ weeks): ${staleItems.length}
-${staleItems.slice(0, 5).map(s => `- ${s.title} (${s.category}, ${s.daysSinceEdit} days)`).join('\n')}
+WEEKLY STATS:
+- Captured: ${weeklyStats.totalCaptures} items (People: ${weeklyStats.byCategory.People}, Projects: ${weeklyStats.byCategory.Projects}, Ideas: ${weeklyStats.byCategory.Ideas}, Tasks: ${weeklyStats.byCategory.Admin})
+- Completed: ${weeklyStats.completedTasks} tasks
 
-Recent content themes: ${recentTexts.slice(0, 10).join(' ').slice(0, 500)}
+STALE ITEMS (untouched 2+ weeks):
+${staleItems.length > 0 ? staleItems.slice(0, 5).map(s => `- "${s.title}" (${s.category}, ${s.daysSinceEdit} days idle)`).join('\n') : '- None'}
 
-Provide 2-3 brief, specific insights:
-1. A pattern or theme you notice
-2. A suggestion for what to focus on
-3. An encouragement or observation
+RECENT THEMES: ${recentTexts.slice(0, 10).join(' ').slice(0, 400)}
 
-Keep it under 100 words total.`,
+Give me 2-3 SPECIFIC insights (use actual item names):
+1. What should I prioritize right now and why?
+2. Which stale item should I either complete or archive?
+3. One observation about my focus or momentum.
+
+Be direct. Under 80 words.`,
             },
           ],
         });
@@ -224,6 +296,7 @@ Keep it under 100 words total.`,
     return NextResponse.json({
       status: 'success',
       staleItems: staleItems.slice(0, 10), // Top 10 stalest
+      dueToday,
       weeklyStats,
       aiInsights,
       generatedAt: now.toISOString(),
