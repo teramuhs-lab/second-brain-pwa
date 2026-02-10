@@ -93,10 +93,14 @@ export async function POST(request: NextRequest) {
       [titleProperty]: {
         title: [{ text: { content: raw_text } }],
       },
-      Status: {
-        select: { name: defaultStatus },
-      },
     };
+
+    // Ideas uses Maturity instead of Status — skip Status for Ideas
+    if (new_category !== 'Idea') {
+      properties['Status'] = {
+        select: { name: defaultStatus },
+      };
+    }
 
     // Add category-specific defaults
     if (new_category === 'Admin') {

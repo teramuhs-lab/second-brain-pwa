@@ -23,6 +23,9 @@ interface StaleItem {
   title: string;
   category: string;
   status?: string;
+  maturity?: string;
+  rawInsight?: string;
+  notes?: string;
   daysSinceEdit: number;
   lastEdited: string;
 }
@@ -64,6 +67,17 @@ function extractTitle(properties: Record<string, unknown>): string {
 function extractStatus(properties: Record<string, unknown>): string | undefined {
   const statusProp = properties['Status'] as { select?: { name: string } } | undefined;
   return statusProp?.select?.name;
+}
+
+function extractMaturity(properties: Record<string, unknown>): string | undefined {
+  const maturityProp = properties['Maturity'] as { select?: { name: string } } | undefined;
+  return maturityProp?.select?.name;
+}
+
+function extractRichText(properties: Record<string, unknown>, fieldName: string): string | undefined {
+  const prop = properties[fieldName] as { rich_text?: Array<{ plain_text: string }> } | undefined;
+  const text = prop?.rich_text?.map(t => t.plain_text).join('');
+  return text || undefined;
 }
 
 function extractDueDate(properties: Record<string, unknown>): string | undefined {
@@ -155,6 +169,9 @@ export async function GET() {
             title: extractTitle(page.properties),
             category,
             status,
+            maturity: category === 'Ideas' ? extractMaturity(page.properties) : undefined,
+            rawInsight: category === 'Ideas' ? extractRichText(page.properties, 'Raw Insight') : undefined,
+            notes: extractRichText(page.properties, 'Notes'),
             daysSinceEdit,
             lastEdited: page.last_edited_time,
           });

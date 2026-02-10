@@ -95,10 +95,10 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      console.error('Notion update error:', error);
+      const errorText = await response.text();
+      console.error('Notion update error:', errorText, 'Properties sent:', JSON.stringify(properties));
       return NextResponse.json(
-        { status: 'error', error: `Notion API error: ${response.status}` },
+        { status: 'error', error: `Notion API error: ${response.status}`, details: errorText },
         { status: response.status }
       );
     }

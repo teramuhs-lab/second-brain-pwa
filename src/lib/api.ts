@@ -69,7 +69,7 @@ export async function recategorize(
       error: result.error,
     };
   } catch (error) {
-    console.error('Recategorize error:', error);
+    console.warn('Recategorize error:', error);
     return {
       status: 'error',
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -84,7 +84,8 @@ export async function updateEntry(
   updates: Record<string, unknown>
 ): Promise<UpdateResponse> {
   try {
-    const response = await fetch(ENDPOINTS.update, {
+    // Use local API endpoint for direct Notion access
+    const response = await fetch('/api/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -94,13 +95,19 @@ export async function updateEntry(
       }),
     });
 
+    const data = await response.json();
+
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      console.warn('Update failed:', data.error, data.details);
+      return {
+        status: 'error',
+        error: data.details || data.error || `HTTP error: ${response.status}`,
+      };
     }
 
-    return await response.json();
+    return data;
   } catch (error) {
-    console.error('Update error:', error);
+    console.warn('Update failed:', error);
     return {
       status: 'error',
       error: error instanceof Error ? error.message : 'Unknown error',

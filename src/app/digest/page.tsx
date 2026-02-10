@@ -1,17 +1,28 @@
 'use client';
 
 import { useState, useEffect, useCallback, ReactNode } from 'react';
-import { fetchDigest, markDone, snoozeEntry } from '@/lib/api';
-import type { DailyDigestResponse, WeeklyDigestResponse } from '@/lib/types';
+import { fetchDigest, markDone, snoozeEntry, updateEntry, recategorize, deleteEntry } from '@/lib/api';
+import type { DailyDigestResponse, WeeklyDigestResponse, Category } from '@/lib/types';
 
 interface StaleItem {
   id: string;
   title: string;
   category: string;
   status?: string;
+  maturity?: string;
+  rawInsight?: string;
+  notes?: string;
   daysSinceEdit: number;
   lastEdited: string;
 }
+
+// Map plural category names (from API) to singular (for recategorize)
+const CATEGORY_SINGULAR: Record<string, Category> = {
+  People: 'People',
+  Projects: 'Project',
+  Ideas: 'Idea',
+  Admin: 'Admin',
+};
 
 interface DueTodayItem {
   id: string;
@@ -125,6 +136,8 @@ export default function DigestPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [expandedItem, setExpandedItem] = useState<string | null>(null);
+  const [revisitNote, setRevisitNote] = useState('');
 
   // Handle completing a stale item
   const handleComplete = async (item: StaleItem) => {
@@ -140,7 +153,7 @@ export default function DigestPage() {
         staleItems: prev.staleItems.filter(i => i.id !== item.id)
       } : null);
     } catch (err) {
-      console.error('Failed to complete item:', err);
+      console.warn('Failed to complete item:', err);
     } finally {
       setActionLoading(null);
     }
@@ -162,7 +175,7 @@ export default function DigestPage() {
         staleItems: prev.staleItems.filter(i => i.id !== item.id)
       } : null);
     } catch (err) {
-      console.error('Failed to snooze item:', err);
+      console.warn('Failed to snooze item:', err);
     } finally {
       setActionLoading(null);
     }
@@ -182,7 +195,68 @@ export default function DigestPage() {
         dueToday: prev.dueToday.filter(i => i.id !== item.id)
       } : null);
     } catch (err) {
-      console.error('Failed to complete item:', err);
+      console.warn('Failed to complete item:', err);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Handle revisiting an item (add note, which updates last_edited_time)
+  const handleRevisit = async (item: StaleItem) => {
+    if (!revisitNote.trim()) return;
+    const db = CATEGORY_TO_DB[item.category];
+    if (!db) return;
+
+    setActionLoading(item.id);
+    try {
+      const result = await updateEntry(item.id, db, { notes: revisitNote.trim() });
+      if (result.status === 'error') {
+        console.warn('Failed to revisit item:', result.error);
+      } else {
+        setInsights(prev => prev ? {
+          ...prev,
+          staleItems: prev.staleItems.filter(i => i.id !== item.id)
+        } : null);
+        setRevisitNote('');
+        setExpandedItem(null);
+      }
+    } catch (err) {
+      console.warn('Failed to revisit item:', err);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Handle converting an Idea to Project or Task
+  const handleConvert = async (item: StaleItem, targetCategory: Category) => {
+    const currentCategory = CATEGORY_SINGULAR[item.category];
+    if (!currentCategory) return;
+
+    setActionLoading(item.id);
+    try {
+      await recategorize(item.id, currentCategory, targetCategory, item.title);
+      setInsights(prev => prev ? {
+        ...prev,
+        staleItems: prev.staleItems.filter(i => i.id !== item.id)
+      } : null);
+    } catch (err) {
+      console.warn('Failed to convert item:', err);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Handle dismissing (archiving) a stale item
+  const handleDismiss = async (item: StaleItem) => {
+    setActionLoading(item.id);
+    try {
+      await deleteEntry(item.id);
+      setInsights(prev => prev ? {
+        ...prev,
+        staleItems: prev.staleItems.filter(i => i.id !== item.id)
+      } : null);
+    } catch (err) {
+      console.warn('Failed to dismiss item:', err);
     } finally {
       setActionLoading(null);
     }
@@ -539,45 +613,140 @@ export default function DigestPage() {
                 </div>
 
                 <div className="space-y-2">
-                  {insights.staleItems.slice(0, 5).map((item) => (
-                    <div
-                      key={item.id}
-                      className={`flex items-center justify-between rounded-lg bg-[var(--bg-elevated)] p-3 ${actionLoading === item.id ? 'opacity-50' : ''}`}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-xs text-[var(--text-muted)]/70 shrink-0">
-                          {item.category}
-                        </span>
-                        <span className="text-sm text-[var(--text-primary)] truncate">{item.title}</span>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0 ml-2">
-                        <span className="text-xs text-[var(--text-muted)]">{item.daysSinceEdit}d</span>
-                        {/* Snooze button */}
+                  {insights.staleItems.slice(0, 5).map((item) => {
+                    const isExpanded = expandedItem === item.id;
+                    const contentText = item.rawInsight || item.notes;
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={`rounded-lg bg-[var(--bg-elevated)] overflow-hidden transition-all ${actionLoading === item.id ? 'opacity-50' : ''}`}
+                      >
+                        {/* Header - tappable to expand */}
                         <button
-                          onClick={() => handleSnooze(item)}
-                          disabled={actionLoading === item.id}
-                          className="p-1.5 rounded-lg bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-                          title="Snooze 1 week"
+                          className="w-full flex items-center justify-between p-3 text-left"
+                          onClick={() => {
+                            setExpandedItem(isExpanded ? null : item.id);
+                            if (!isExpanded) setRevisitNote('');
+                          }}
                         >
-                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="12" cy="12" r="10"/>
-                            <path d="M12 6v6l4 2"/>
-                          </svg>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-xs text-[var(--text-muted)]/70 shrink-0">
+                              {item.category}
+                              {item.maturity && <span className="ml-1 text-[var(--accent-cyan)]">/ {item.maturity}</span>}
+                            </span>
+                            <span className="text-sm text-[var(--text-primary)] truncate">{item.title}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 ml-2">
+                            <span className="text-xs text-[var(--text-muted)]">{item.daysSinceEdit}d</span>
+                            <svg
+                              className={`h-3.5 w-3.5 text-[var(--text-muted)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </div>
                         </button>
-                        {/* Complete button */}
-                        <button
-                          onClick={() => handleComplete(item)}
-                          disabled={actionLoading === item.id}
-                          className="p-1.5 rounded-lg bg-green-900/30 text-green-400 hover:bg-green-900/50 transition-colors"
-                          title="Mark done"
-                        >
-                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </button>
+
+                        {/* Expanded content */}
+                        {isExpanded && (
+                          <div className="px-3 pb-3 space-y-3">
+                            {/* Show existing notes/raw insight */}
+                            {contentText && (
+                              <p className="text-xs text-[var(--text-secondary)] bg-[var(--bg-surface)] rounded-lg p-2.5 leading-relaxed">
+                                {contentText}
+                              </p>
+                            )}
+
+                            {/* Note input */}
+                            <textarea
+                              value={revisitNote}
+                              onChange={(e) => setRevisitNote(e.target.value)}
+                              placeholder="Add a note..."
+                              rows={3}
+                              className="w-full resize-none rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]/50 focus:outline-none focus:border-[var(--accent-cyan)]/40"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey && revisitNote.trim()) {
+                                  e.preventDefault();
+                                  handleRevisit(item);
+                                }
+                              }}
+                            />
+
+                            {/* Action buttons */}
+                            <div className="flex gap-1.5">
+                              {/* Revisit (save note) */}
+                              <button
+                                onClick={() => handleRevisit(item)}
+                                disabled={actionLoading === item.id || !revisitNote.trim()}
+                                className={`flex-1 rounded-lg px-2.5 py-1.5 text-xs transition-colors ${
+                                  revisitNote.trim()
+                                    ? 'bg-[var(--accent-cyan)]/15 text-[var(--accent-cyan)] hover:bg-[var(--accent-cyan)]/25'
+                                    : 'bg-[var(--bg-surface)] text-[var(--text-muted)]/50 cursor-not-allowed'
+                                }`}
+                              >
+                                Revisit
+                              </button>
+
+                              {item.category === 'Ideas' ? (
+                                <>
+                                  <button
+                                    onClick={() => handleConvert(item, 'People')}
+                                    disabled={actionLoading === item.id}
+                                    className="flex-1 rounded-lg bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-deep)] transition-colors"
+                                  >
+                                    People
+                                  </button>
+                                  <button
+                                    onClick={() => handleConvert(item, 'Project')}
+                                    disabled={actionLoading === item.id}
+                                    className="flex-1 rounded-lg bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-deep)] transition-colors"
+                                  >
+                                    Project
+                                  </button>
+                                  <button
+                                    onClick={() => handleConvert(item, 'Admin')}
+                                    disabled={actionLoading === item.id}
+                                    className="flex-1 rounded-lg bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-deep)] transition-colors"
+                                  >
+                                    Task
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => handleSnooze(item)}
+                                    disabled={actionLoading === item.id}
+                                    className="flex-1 rounded-lg bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-deep)] transition-colors"
+                                  >
+                                    Snooze 1w
+                                  </button>
+                                  <button
+                                    onClick={() => handleComplete(item)}
+                                    disabled={actionLoading === item.id}
+                                    className="flex-1 rounded-lg bg-green-900/20 px-2.5 py-1.5 text-xs text-green-400 hover:bg-green-900/30 transition-colors"
+                                  >
+                                    Done
+                                  </button>
+                                </>
+                              )}
+
+                              <button
+                                onClick={() => handleDismiss(item)}
+                                disabled={actionLoading === item.id}
+                                className="rounded-lg bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs text-red-400/70 hover:bg-red-900/20 transition-colors"
+                              >
+                                Dismiss
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {insights.staleItems.length > 5 && (

@@ -222,7 +222,25 @@ export function TaskList() {
   const [tasks, setTasks] = useState<Entry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Set<Section>>(
+    new Set(['this_week', 'upcoming', 'backlog'])
+  );
+  const [fullyExpandedSections, setFullyExpandedSections] = useState<Set<Section>>(new Set());
   const { showError } = useToast();
+
+  const SECTION_ITEM_LIMIT = 5;
+
+  const toggleSection = (key: Section) => {
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   const loadTasks = useCallback(async (showLoadingState = true) => {
     if (showLoadingState) setIsLoading(true);
@@ -242,6 +260,9 @@ export function TaskList() {
 
   useEffect(() => {
     loadTasks();
+    // Reset section states on tab switch
+    setCollapsedSections(new Set(['this_week', 'upcoming', 'backlog']));
+    setFullyExpandedSections(new Set());
   }, [loadTasks]);
 
   const handleStatusChange = async (taskId: string, newStatus: string) => {
@@ -402,34 +423,73 @@ export function TaskList() {
         </div>
       ) : groupedTasks ? (
         // Active tasks - grouped by urgency
-        <div className="space-y-8">
+        <div className="space-y-6">
           {SECTIONS.map(({ key, label, color }) => {
             const sectionTasks = groupedTasks[key];
             if (sectionTasks.length === 0) return null;
 
+            const isCollapsed = collapsedSections.has(key);
+            const isBacklog = key === 'backlog';
+            const visibleTasks = isCollapsed ? [] : (
+              fullyExpandedSections.has(key)
+                ? sectionTasks
+                : sectionTasks.slice(0, SECTION_ITEM_LIMIT)
+            );
+            const hiddenCount = isCollapsed ? 0 : sectionTasks.length - visibleTasks.length;
+
             return (
-              <div key={key}>
-                {/* Section header - zen styling */}
-                <div className={`flex items-center gap-2 mb-3 ${color}`}>
+              <div key={key} className={isBacklog ? 'pt-4 border-t border-dashed border-[var(--border-subtle)]' : ''}>
+                {/* Section header - tappable to collapse/expand */}
+                <button
+                  className={`w-full flex items-center gap-2 mb-3 ${color} ${isBacklog && isCollapsed ? 'opacity-60' : ''}`}
+                  onClick={() => toggleSection(key)}
+                >
+                  <svg
+                    className={`h-3 w-3 shrink-0 transition-transform duration-200 ${isCollapsed ? '-rotate-90' : ''}`}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
+                    <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
                   <span className="text-xs font-medium tracking-wide">{label}</span>
                   <span className="text-xs opacity-40">·</span>
                   <span className="text-xs opacity-40">{sectionTasks.length}</span>
-                </div>
+                </button>
 
-                {/* Section tasks */}
-                <div className="space-y-2">
-                  {sectionTasks.map((task) => (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      database={activeTab}
-                      onStatusChange={handleStatusChange}
-                      onComplete={handleComplete}
-                      onSnooze={handleSnooze}
-                      onRecategorize={handleRecategorize}
-                      onDelete={handleDelete}
-                    />
-                  ))}
+                {/* Section tasks - animated collapse */}
+                <div
+                  className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${
+                    isCollapsed ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'
+                  }`}
+                >
+                  <div className="overflow-hidden">
+                    <div className="space-y-2">
+                      {visibleTasks.map((task) => (
+                        <TaskCard
+                          key={task.id}
+                          task={task}
+                          database={activeTab}
+                          onStatusChange={handleStatusChange}
+                          onComplete={handleComplete}
+                          onSnooze={handleSnooze}
+                          onRecategorize={handleRecategorize}
+                          onDelete={handleDelete}
+                        />
+                      ))}
+
+                      {/* Show more button */}
+                      {hiddenCount > 0 && (
+                        <button
+                          onClick={() => setFullyExpandedSections(prev => new Set(prev).add(key))}
+                          className="w-full py-2.5 text-center text-xs text-[var(--text-muted)]/60 hover:text-[var(--text-muted)] transition-colors"
+                        >
+                          Show {hiddenCount} more
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             );
