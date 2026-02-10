@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 interface NotesEditorProps {
   isOpen: boolean;
   taskTitle: string;
+  editorTitle?: string;
   initialNotes: string;
   onSave: (notes: string) => Promise<void>;
   onClose: () => void;
@@ -14,6 +15,7 @@ interface NotesEditorProps {
 export function NotesEditor({
   isOpen,
   taskTitle,
+  editorTitle,
   initialNotes,
   onSave,
   onClose
@@ -122,9 +124,9 @@ export function NotesEditor({
 
         <h2
           className="text-sm font-medium text-[var(--text-primary)] truncate max-w-[180px]"
-          title={taskTitle}
+          title={editorTitle || taskTitle}
         >
-          {taskTitle}
+          {editorTitle || taskTitle}
         </h2>
 
         <button
@@ -160,7 +162,7 @@ export function NotesEditor({
           ref={textareaRef}
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Add notes..."
+          placeholder={editorTitle ? `Add ${editorTitle.toLowerCase()}...` : 'Add notes...'}
           disabled={isSaving}
           className="flex-1 p-4 bg-transparent text-[var(--text-primary)] text-base leading-relaxed resize-none focus:outline-none disabled:opacity-50"
           style={{

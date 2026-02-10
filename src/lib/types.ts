@@ -92,6 +92,9 @@ export interface Entry {
   context?: string;
   company?: string;
   role?: string;
+  // Ideas-specific fields
+  one_liner?: string;
+  maturity?: string;
 }
 
 // Detailed Entry types (for future use with direct Notion access)

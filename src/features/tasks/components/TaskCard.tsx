@@ -35,6 +35,7 @@ const STATUS_OPTIONS: Record<string, string[]> = {
   admin: ['Todo', 'Done'],
   projects: ['Not Started', 'Active', 'Waiting', 'Complete'],
   people: ['New', 'Active', 'Dormant'],
+  ideas: ['Spark', 'Developing', 'Actionable'],
 };
 
 // Priority dot colors (zen aesthetic - muted tones)
@@ -58,20 +59,25 @@ export function TaskCard({
   const [isLoading, setIsLoading] = useState(false);
   const [showFloatingCard, setShowFloatingCard] = useState(false);
   const [showNotesEditor, setShowNotesEditor] = useState(false);
+  const [showNextActionEditor, setShowNextActionEditor] = useState(false);
   const [showSnooze, setShowSnooze] = useState(false);
   const [showCustomDate, setShowCustomDate] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showDueDatePicker, setShowDueDatePicker] = useState(false);
   const [swipeOffset, setSwipeOffset] = useState(0);
+  const [localDueDate, setLocalDueDate] = useState(task.due_date || '');
   const [localNotes, setLocalNotes] = useState(task.notes || '');
   const [localContext, setLocalContext] = useState(task.context || '');
+  const [localNextAction, setLocalNextAction] = useState('');
+  const [localOneLiner, setLocalOneLiner] = useState('');
   const startX = useRef(0);
   const currentX = useRef(0);
   const contextFetchedRef = useRef(false);
 
   const currentCategory = DATABASE_TO_CATEGORY[database];
   const statusOptions = STATUS_OPTIONS[database] || ['Todo', 'Done'];
-  const completedStatus = database === 'projects' ? 'Complete' : database === 'people' ? 'Dormant' : 'Done';
-  const isCompleted = task.status === completedStatus;
+  const completedStatus = database === 'ideas' ? null : database === 'projects' ? 'Complete' : database === 'people' ? 'Dormant' : 'Done';
+  const isCompleted = completedStatus ? task.status === completedStatus : false;
 
   // Fetch context for People entries on mount (for display in list)
   useEffect(() => {
@@ -89,6 +95,36 @@ export function TaskCard({
       });
     }
   }, [database, task.id, localContext, localNotes]);
+
+  // Fetch next_action for Projects entries on mount
+  useEffect(() => {
+    if (database === 'projects' && !localNextAction) {
+      fetchEntry(task.id).then((res) => {
+        if (res.status === 'success' && res.entry) {
+          if (res.entry.next_action) {
+            setLocalNextAction(res.entry.next_action as string);
+          }
+        }
+      });
+    }
+  }, [database, task.id, localNextAction]);
+
+  // Fetch one_liner for Ideas entries on mount
+  useEffect(() => {
+    if (database === 'ideas') {
+      // Use one_liner from task if available (from /api/ideas response)
+      if (task.one_liner && !localOneLiner) {
+        setLocalOneLiner(task.one_liner);
+      } else if (!localOneLiner) {
+        fetchEntry(task.id).then((res) => {
+          if (res.status === 'success' && res.entry) {
+            if (res.entry.one_liner) setLocalOneLiner(res.entry.one_liner as string);
+            if (res.entry.notes && !localNotes) setLocalNotes(res.entry.notes as string);
+          }
+        });
+      }
+    }
+  }, [database, task.id, task.one_liner, localOneLiner, localNotes]);
 
   // Fetch notes when floating card opens (n8n fetch doesn't return notes)
   useEffect(() => {
@@ -130,7 +166,22 @@ export function TaskCard({
 
   const handleStatusChange = async (newStatus: string) => {
     setIsLoading(true);
-    await onStatusChange(task.id, newStatus);
+    if (database === 'ideas') {
+      // Ideas use Maturity instead of Status
+      await fetch('/api/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          page_id: task.id,
+          database: 'ideas',
+          updates: { maturity: newStatus },
+        }),
+      });
+      // Trigger reload via onStatusChange callback
+      await onStatusChange(task.id, newStatus);
+    } else {
+      await onStatusChange(task.id, newStatus);
+    }
     setIsLoading(false);
   };
 
@@ -203,11 +254,46 @@ export function TaskCard({
     }
   };
 
+  const handleNextActionSave = async (nextAction: string) => {
+    setLocalNextAction(nextAction);
+    const response = await fetch('/api/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        page_id: task.id,
+        database: 'projects',
+        updates: { next_action: nextAction },
+      }),
+    });
+    if (!response.ok) {
+      console.error('Failed to save next action:', await response.text());
+    }
+  };
+
+  const handleDueDateChange = async (dateStr: string) => {
+    setLocalDueDate(dateStr);
+    setShowDueDatePicker(false);
+    const dateField = database === 'people' ? 'next_followup' : 'due_date';
+    const response = await fetch('/api/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        page_id: task.id,
+        database,
+        updates: { [dateField]: dateStr || null },
+      }),
+    });
+    if (!response.ok) {
+      console.error('Failed to save due date:', await response.text());
+    }
+  };
+
   const closeFloatingCard = () => {
     setShowFloatingCard(false);
     setShowSnooze(false);
     setShowCustomDate(false);
     setShowDeleteConfirm(false);
+    setShowDueDatePicker(false);
   };
 
   // Parse date string as local time (not UTC)
@@ -263,14 +349,15 @@ export function TaskCard({
     return dateDisplay;
   };
 
-  const isOverdue = task.due_date && (() => {
-    const dueDate = parseLocalDate(task.due_date);
+  const effectiveDueDate = localDueDate || task.due_date;
+  const isOverdue = effectiveDueDate && (() => {
+    const dueDate = parseLocalDate(effectiveDueDate);
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     // For items with specific time, compare against current time
     // For date-only items, compare against midnight
-    if (hasTime(task.due_date)) {
+    if (hasTime(effectiveDueDate)) {
       return dueDate < now;
     }
     return dueDate < today;
@@ -349,12 +436,26 @@ export function TaskCard({
                   </p>
                 )}
 
+                {/* Next Action for Project entries */}
+                {database === 'projects' && localNextAction && (
+                  <p className="mt-0.5 text-[13px] text-[var(--text-secondary)] line-clamp-1">
+                    Next: {localNextAction}
+                  </p>
+                )}
+
+                {/* One-liner for Idea entries */}
+                {database === 'ideas' && localOneLiner && (
+                  <p className="mt-0.5 text-[13px] text-[var(--text-secondary)] line-clamp-1">
+                    {localOneLiner}
+                  </p>
+                )}
+
                 {/* Subtle metadata row */}
                 <div className="mt-1 flex items-center gap-3">
                   {/* Due date - subtle styling */}
-                  {task.due_date && (
+                  {effectiveDueDate && (
                     <span className={`text-xs ${isOverdue ? 'text-red-400/90 font-medium' : 'text-[var(--text-muted)]/70'}`}>
-                      {formatDate(task.due_date)}
+                      {formatDate(effectiveDueDate)}
                     </span>
                   )}
 
@@ -416,6 +517,64 @@ export function TaskCard({
             ))}
           </div>
         </div>
+
+        {/* Next Action section — projects only */}
+        {database === 'projects' && (
+          <div className="mb-3">
+            <p className="mb-2 text-xs text-[var(--text-muted)]">Next Action</p>
+            <div
+              onClick={() => {
+                setShowFloatingCard(false);
+                setShowNextActionEditor(true);
+              }}
+              className="p-2.5 rounded-lg bg-[var(--bg-elevated)] cursor-pointer hover:bg-[var(--bg-surface)] transition-colors"
+            >
+              {localNextAction ? (
+                <p className="text-xs text-[var(--text-secondary)] line-clamp-2">{localNextAction}</p>
+              ) : (
+                <p className="text-xs text-[var(--text-muted)] italic">Tap to set next action...</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Due Date section (hidden for ideas — no date field) */}
+        {database !== 'ideas' && <div className="mb-3">
+          <p className="mb-2 text-xs text-[var(--text-muted)]">Due Date</p>
+          {showDueDatePicker ? (
+            <div className="space-y-2">
+              <input
+                type="date"
+                defaultValue={localDueDate ? localDueDate.split('T')[0] : ''}
+                onChange={(e) => {
+                  if (e.target.value) handleDueDateChange(e.target.value);
+                }}
+                className="w-full rounded-lg bg-[var(--bg-elevated)] px-3 py-2 text-sm text-[var(--text-primary)] border border-[var(--border-subtle)] focus:outline-none focus:border-[var(--accent-cyan)]"
+              />
+              {localDueDate && (
+                <button
+                  onClick={() => handleDueDateChange('')}
+                  className="text-xs text-red-400/70 hover:text-red-400 transition-colors"
+                >
+                  Remove date
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowDueDatePicker(true)}
+              className="w-full p-2.5 rounded-lg bg-[var(--bg-elevated)] text-left hover:bg-[var(--bg-surface)] transition-colors"
+            >
+              {localDueDate ? (
+                <span className={`text-xs ${isOverdue ? 'text-red-400 font-medium' : 'text-[var(--text-secondary)]'}`}>
+                  {formatDate(localDueDate)}
+                </span>
+              ) : (
+                <span className="text-xs text-[var(--text-muted)] italic">Set deadline...</span>
+              )}
+            </button>
+          )}
+        </div>}
 
         {/* Move to section */}
         <div className="mb-3">
@@ -569,6 +728,18 @@ export function TaskCard({
         onSave={handleNotesSave}
         onClose={() => setShowNotesEditor(false)}
       />
+
+      {/* Next Action Editor — projects only */}
+      {database === 'projects' && (
+        <NotesEditor
+          isOpen={showNextActionEditor}
+          taskTitle={task.title}
+          editorTitle="Next Action"
+          initialNotes={localNextAction}
+          onSave={handleNextActionSave}
+          onClose={() => setShowNextActionEditor(false)}
+        />
+      )}
     </>
   );
 }

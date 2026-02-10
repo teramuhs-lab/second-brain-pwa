@@ -16,13 +16,14 @@ const DATABASE_TO_CATEGORY: Record<string, Category> = {
   ideas: 'Idea',
 };
 
-type TabType = 'admin' | 'projects' | 'people';
+type TabType = 'admin' | 'projects' | 'people' | 'ideas';
 
 // Zen tabs - no emoji, clean labels
 const TABS: { id: TabType; label: string; activeStatus: string }[] = [
   { id: 'admin', label: 'Tasks', activeStatus: 'Todo' },
   { id: 'projects', label: 'Projects', activeStatus: 'Active' },
   { id: 'people', label: 'People', activeStatus: 'Active' },
+  { id: 'ideas', label: 'Ideas', activeStatus: 'Spark' },
 ];
 
 // Zen tab colors - muted, calm
@@ -30,6 +31,7 @@ const TAB_COLORS: Record<TabType, string> = {
   admin: 'bg-[var(--text-primary)]',
   projects: 'bg-[var(--text-primary)]',
   people: 'bg-[var(--text-primary)]',
+  ideas: 'bg-[var(--text-primary)]',
 };
 
 // Priority order for sorting
@@ -147,27 +149,28 @@ function groupAdminTasks(tasks: Entry[]): GroupedTasks {
   return groups;
 }
 
-// Group and sort tasks for Projects tab
+// Group and sort tasks for Projects tab (by status + due date)
 function groupProjectTasks(tasks: Entry[]): GroupedTasks {
+  const { today } = getDateBoundaries();
   const groups: GroupedTasks = { overdue: [], today: [], this_week: [], upcoming: [], backlog: [] };
 
-  // For projects, sort by priority then by last edited (approximated by created)
-  const sorted = [...tasks].sort((a, b) => {
-    const priorityA = PRIORITY_ORDER[a.priority || 'Medium'] ?? 2;
-    const priorityB = PRIORITY_ORDER[b.priority || 'Medium'] ?? 2;
-    if (priorityA !== priorityB) return priorityA - priorityB;
-    // No direct last_edited, so we just keep original order
-    return 0;
-  });
-
-  // Put high priority in "today" section, others in "backlog"
-  sorted.forEach(task => {
-    if (task.priority === 'High') {
-      groups.today.push(task);
+  tasks.forEach(task => {
+    if (task.status === 'Waiting') {
+      groups.this_week.push(task); // "Waiting" section
     } else {
-      groups.backlog.push(task);
+      const dueDate = parseDate(task.due_date);
+      if (dueDate && dueDate < today) {
+        groups.overdue.push(task); // Overdue active projects
+      } else {
+        groups.today.push(task); // "Active" section
+      }
     }
   });
+
+  // Sort each group by priority, then by due date
+  groups.overdue.sort(sortByPriorityAndDate);
+  groups.today.sort(sortByPriorityAndDate);
+  groups.this_week.sort(sortByPriorityAndDate);
 
   return groups;
 }
@@ -217,6 +220,27 @@ function groupPeopleTasks(tasks: Entry[]): GroupedTasks {
   return groups;
 }
 
+// Group and sort ideas by Maturity (Actionable > Developing > Spark)
+function groupIdeasTasks(tasks: Entry[]): GroupedTasks {
+  const groups: GroupedTasks = { overdue: [], today: [], this_week: [], upcoming: [], backlog: [] };
+
+  tasks.forEach(task => {
+    switch (task.status) {
+      case 'Actionable':
+        groups.today.push(task);     // "Actionable" section
+        break;
+      case 'Developing':
+        groups.this_week.push(task);  // "Developing" section
+        break;
+      default:
+        groups.upcoming.push(task);   // "Spark" section (default)
+        break;
+    }
+  });
+
+  return groups;
+}
+
 export function TaskList() {
   const [activeTab, setActiveTab] = useState<TabType>('admin');
   const [tasks, setTasks] = useState<Entry[]>([]);
@@ -245,8 +269,15 @@ export function TaskList() {
   const loadTasks = useCallback(async (showLoadingState = true) => {
     if (showLoadingState) setIsLoading(true);
     try {
-      const data = await fetchEntries(activeTab);
-      setTasks(data);
+      if (activeTab === 'ideas') {
+        // Fetch ideas from our own API route (returns maturity in status field)
+        const response = await fetch('/api/ideas');
+        const data = await response.json();
+        setTasks(data.items || []);
+      } else {
+        const data = await fetchEntries(activeTab);
+        setTasks(data);
+      }
     } catch (error) {
       console.error('Failed to load tasks:', error);
     } finally {
@@ -261,17 +292,30 @@ export function TaskList() {
   useEffect(() => {
     loadTasks();
     // Reset section states on tab switch
-    setCollapsedSections(new Set(['this_week', 'upcoming', 'backlog']));
+    if (activeTab === 'ideas') {
+      setCollapsedSections(new Set(['upcoming'])); // Only Spark collapsed
+    } else if (activeTab === 'projects') {
+      setCollapsedSections(new Set(['this_week'])); // Only Waiting collapsed
+    } else {
+      setCollapsedSections(new Set(['this_week', 'upcoming', 'backlog']));
+    }
     setFullyExpandedSections(new Set());
-  }, [loadTasks]);
+  }, [loadTasks, activeTab]);
 
   const handleStatusChange = async (taskId: string, newStatus: string) => {
-    await updateEntry(taskId, activeTab, { status: newStatus });
+    if (activeTab !== 'ideas') {
+      // Ideas use Maturity (handled directly by TaskCard)
+      await updateEntry(taskId, activeTab, { status: newStatus });
+    }
     await loadTasks();
   };
 
   const handleComplete = async (taskId: string) => {
-    await markDone(taskId, activeTab);
+    if (activeTab === 'ideas') {
+      await deleteEntry(taskId); // Ideas don't have "done" — archive instead
+    } else {
+      await markDone(taskId, activeTab);
+    }
     await loadTasks();
   };
 
@@ -302,10 +346,10 @@ export function TaskList() {
     }
   };
 
-  // Filter tasks by completion status
-  const completedStatus = activeTab === 'projects' ? 'Complete' : activeTab === 'people' ? 'Dormant' : 'Done';
-  const activeTasks = tasks.filter((t) => t.status !== completedStatus);
-  const completedTasks = tasks.filter((t) => t.status === completedStatus);
+  // Filter tasks by completion status (ideas have no completed state)
+  const completedStatus = activeTab === 'ideas' ? null : activeTab === 'projects' ? 'Complete' : activeTab === 'people' ? 'Dormant' : 'Done';
+  const activeTasks = completedStatus ? tasks.filter((t) => t.status !== completedStatus) : tasks;
+  const completedTasks = completedStatus ? tasks.filter((t) => t.status === completedStatus) : [];
 
   // Group active tasks by urgency/priority
   const groupedTasks = useMemo(() => {
@@ -318,6 +362,8 @@ export function TaskList() {
         return groupProjectTasks(activeTasks);
       case 'people':
         return groupPeopleTasks(activeTasks);
+      case 'ideas':
+        return groupIdeasTasks(activeTasks);
       default:
         return null;
     }
@@ -326,10 +372,10 @@ export function TaskList() {
   // Section configuration - zen styling, no emojis
   const SECTIONS: { key: Section; label: string; color: string }[] = [
     { key: 'overdue', label: 'Overdue', color: 'text-red-400/80' },
-    { key: 'today', label: activeTab === 'projects' ? 'Priority' : 'Today', color: 'text-[var(--text-secondary)]' },
-    { key: 'this_week', label: 'This Week', color: 'text-[var(--text-muted)]' },
-    { key: 'upcoming', label: 'Upcoming', color: 'text-[var(--text-muted)]' },
-    { key: 'backlog', label: activeTab === 'projects' ? 'Other' : 'Backlog', color: 'text-[var(--text-muted)]/70' },
+    { key: 'today', label: activeTab === 'ideas' ? 'Actionable' : activeTab === 'projects' ? 'Active' : 'Today', color: 'text-[var(--text-secondary)]' },
+    { key: 'this_week', label: activeTab === 'ideas' ? 'Developing' : activeTab === 'projects' ? 'Waiting' : 'This Week', color: 'text-[var(--text-muted)]' },
+    { key: 'upcoming', label: activeTab === 'ideas' ? 'Spark' : 'Upcoming', color: 'text-[var(--text-muted)]' },
+    { key: 'backlog', label: 'Backlog', color: 'text-[var(--text-muted)]/70' },
   ];
 
   const displayTasks = showCompleted ? completedTasks : activeTasks;
@@ -372,7 +418,8 @@ export function TaskList() {
       {/* Active tab indicator */}
       <div className="h-px bg-gradient-to-r from-transparent via-[var(--border-subtle)] to-transparent mb-4" />
 
-      {/* Toggle completed - subtle */}
+      {/* Toggle completed - subtle (hidden for Ideas tab, no completed state) */}
+      {activeTab !== 'ideas' && (
       <div className="flex items-center justify-end">
         <button
           onClick={() => setShowCompleted(!showCompleted)}
@@ -395,6 +442,7 @@ export function TaskList() {
           ) : null}
         </button>
       </div>
+      )}
 
       {/* Task list */}
       {isLoading ? (
@@ -429,7 +477,7 @@ export function TaskList() {
             if (sectionTasks.length === 0) return null;
 
             const isCollapsed = collapsedSections.has(key);
-            const isBacklog = key === 'backlog';
+            const isBacklog = key === 'backlog' || (key === 'this_week' && activeTab === 'projects');
             const visibleTasks = isCollapsed ? [] : (
               fullyExpandedSections.has(key)
                 ? sectionTasks
