@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { isGoogleConnected } from '@/services/google/auth';
+import { fetchTodaysEvents } from '@/services/google/calendar';
+import type { CalendarEvent } from '@/services/google/types';
 
 // Notion database IDs
 const DATABASE_IDS = {
@@ -85,13 +88,24 @@ function extractCategory(properties: Record<string, unknown>): string | undefine
   return categoryProp?.select?.name;
 }
 
+// Fetch calendar events safely (never throws)
+async function fetchCalendarOrEmpty(): Promise<CalendarEvent[]> {
+  try {
+    if (!(await isGoogleConnected())) return [];
+    return await fetchTodaysEvents();
+  } catch {
+    return [];
+  }
+}
+
 async function fetchDailyData(): Promise<{
   projects: DigestItem[];
   tasks: DigestItem[];
   followups: DigestItem[];
+  calendarEvents: CalendarEvent[];
 }> {
-  // Fetch all databases in parallel
-  const [projectsResponse, adminResponse, peopleResponse] = await Promise.all([
+  // Fetch all databases + calendar in parallel
+  const [projectsResponse, adminResponse, peopleResponse, calendarEvents] = await Promise.all([
     notionRequest(`/databases/${DATABASE_IDS.Projects}/query`, 'POST', {
       page_size: 100,
       sorts: [{ property: 'Priority', direction: 'ascending' }],
@@ -103,6 +117,7 @@ async function fetchDailyData(): Promise<{
     notionRequest(`/databases/${DATABASE_IDS.People}/query`, 'POST', {
       page_size: 100,
     }),
+    fetchCalendarOrEmpty(),
   ]);
 
   // Filter projects: Status = 'Active'
@@ -150,7 +165,7 @@ async function fetchDailyData(): Promise<{
       dueDate: extractDate(page.properties, 'Next Follow-up'),
     }));
 
-  return { projects, tasks, followups };
+  return { projects, tasks, followups, calendarEvents };
 }
 
 async function fetchWeeklyData(): Promise<{
@@ -238,17 +253,29 @@ async function fetchWeeklyData(): Promise<{
 async function generateDailySummary(
   projects: DigestItem[],
   tasks: DigestItem[],
-  followups: DigestItem[]
+  followups: DigestItem[],
+  calendarEvents: CalendarEvent[] = []
 ): Promise<string> {
   if (!OPENAI_API_KEY) {
     return 'AI summary unavailable - OpenAI not configured';
   }
 
-  if (projects.length === 0 && tasks.length === 0 && followups.length === 0) {
-    return 'All clear — no active projects, pending tasks, or follow-ups today.';
+  if (projects.length === 0 && tasks.length === 0 && followups.length === 0 && calendarEvents.length === 0) {
+    return 'All clear — no active projects, pending tasks, follow-ups, or meetings today.';
   }
 
   let summary = '';
+
+  if (calendarEvents.length > 0) {
+    summary += 'CALENDAR TODAY:\n';
+    calendarEvents.forEach((e) => {
+      const time = e.start.dateTime
+        ? new Date(e.start.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+        : 'All day';
+      summary += `- ${time} — ${e.summary}\n`;
+    });
+    summary += '\n';
+  }
 
   if (projects.length > 0) {
     summary += 'ACTIVE PROJECTS:\n';
@@ -291,7 +318,7 @@ async function generateDailySummary(
 **Follow-ups** (only if items exist)
 • Person Name (Company)
 
-Rules: No intro text. No headers for empty sections. No sign-off. Max 120 words. Use bullet points (•) not dashes.`,
+Rules: No intro text. No headers for empty sections. No sign-off. Max 150 words. Use bullet points (•) not dashes. Do NOT list the schedule/calendar as a separate section — the calendar is already displayed in the UI. Instead, weave meeting context naturally into your suggestions (e.g., "Good time to discuss X in your 2pm 1:1" or "Prep the proposal before your 3pm meeting").`,
       },
       { role: 'user', content: summary },
     ],
@@ -396,8 +423,8 @@ export async function GET(request: NextRequest) {
     const type = request.nextUrl.searchParams.get('type') || 'daily';
 
     if (type === 'daily') {
-      const { projects, tasks, followups } = await fetchDailyData();
-      const aiSummary = await generateDailySummary(projects, tasks, followups);
+      const { projects, tasks, followups, calendarEvents } = await fetchDailyData();
+      const aiSummary = await generateDailySummary(projects, tasks, followups, calendarEvents);
 
       return NextResponse.json({
         status: 'success',

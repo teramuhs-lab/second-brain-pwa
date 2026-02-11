@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, ReactNode } from 'react';
-import { fetchDigest, markDone, snoozeEntry, updateEntry, recategorize, deleteEntry } from '@/lib/api';
-import type { DailyDigestResponse, WeeklyDigestResponse, Category } from '@/lib/types';
+import { fetchDigest, fetchEntries, markDone, snoozeEntry, updateEntry, recategorize, deleteEntry } from '@/lib/api';
+import type { DailyDigestResponse, WeeklyDigestResponse, Category, CalendarEvent, Entry } from '@/lib/types';
 
 interface StaleItem {
   id: string;
@@ -128,6 +128,25 @@ function DigestSkeleton() {
   );
 }
 
+// Calendar helpers
+function formatEventTime(event: CalendarEvent): string {
+  if (event.start.date) return 'All day';
+  if (!event.start.dateTime) return '';
+  return new Date(event.start.dateTime).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
+function formatDuration(event: CalendarEvent): string | null {
+  if (!event.start.dateTime || !event.end.dateTime) return null;
+  const mins = (new Date(event.end.dateTime).getTime() - new Date(event.start.dateTime).getTime()) / 60000;
+  if (mins < 60) return `${mins}m`;
+  if (mins % 60 === 0) return `${mins / 60}h`;
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
 export default function DigestPage() {
   const [activeTab, setActiveTab] = useState<'daily' | 'weekly' | 'insights'>('daily');
   const [dailyDigest, setDailyDigest] = useState<DailyDigestResponse | null>(null);
@@ -138,6 +157,11 @@ export default function DigestPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [revisitNote, setRevisitNote] = useState('');
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [googleConnected, setGoogleConnected] = useState<boolean | null>(null);
+  const [drillDownCategory, setDrillDownCategory] = useState<string | null>(null);
+  const [drillDownItems, setDrillDownItems] = useState<Entry[]>([]);
+  const [drillDownLoading, setDrillDownLoading] = useState(false);
 
   // Handle completing a stale item
   const handleComplete = async (item: StaleItem) => {
@@ -200,6 +224,28 @@ export default function DigestPage() {
       setActionLoading(null);
     }
   };
+
+  // Handle category drill-down in insights
+  const handleCategoryDrillDown = useCallback(async (category: string) => {
+    if (drillDownCategory === category) {
+      setDrillDownCategory(null);
+      return;
+    }
+    setDrillDownCategory(category);
+    setDrillDownLoading(true);
+    try {
+      const items = await fetchEntries(category.toLowerCase());
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      const recentItems = items.filter(item =>
+        item.created && new Date(item.created) >= oneWeekAgo
+      );
+      setDrillDownItems(recentItems);
+    } catch {
+      setDrillDownItems([]);
+    }
+    setDrillDownLoading(false);
+  }, [drillDownCategory]);
 
   // Handle revisiting an item (add note, which updates last_edited_time)
   const handleRevisit = async (item: StaleItem) => {
@@ -305,6 +351,17 @@ export default function DigestPage() {
     } finally {
       setIsLoading(false);
     }
+  }, []);
+
+  // Fetch calendar events on mount (non-blocking)
+  useEffect(() => {
+    fetch('/api/calendar/events')
+      .then((r) => r.json())
+      .then((data) => {
+        setGoogleConnected(data.connected);
+        setCalendarEvents(data.events || []);
+      })
+      .catch(() => setGoogleConnected(false));
   }, []);
 
   // Load digest on mount and tab change
@@ -413,6 +470,54 @@ export default function DigestPage() {
                   </span>
                 )}
               </div>
+            )}
+
+            {/* Calendar Schedule — only when connected and has events */}
+            {googleConnected && calendarEvents.length > 0 && (
+              <div className="rounded-xl bg-[var(--bg-elevated)] p-4 mb-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-medium text-[var(--text-secondary)]">Schedule</p>
+                  <span className="text-xs text-[var(--text-muted)]">{calendarEvents.length}</span>
+                </div>
+                <div className="space-y-2">
+                  {calendarEvents.map((event) => (
+                    <a
+                      key={event.id}
+                      href={event.htmlLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 py-1 group"
+                    >
+                      <span className="text-xs text-[var(--text-muted)] w-16 shrink-0 tabular-nums">
+                        {formatEventTime(event)}
+                      </span>
+                      <span className="text-sm text-[var(--text-primary)] truncate group-hover:text-[var(--accent-cyan)] transition-colors">
+                        {event.summary}
+                      </span>
+                      {formatDuration(event) && (
+                        <span className="text-xs text-[var(--text-muted)]/60 shrink-0 ml-auto">
+                          {formatDuration(event)}
+                        </span>
+                      )}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Connect Google — subtle single-line prompt */}
+            {googleConnected === false && (
+              <a
+                href="/api/google/auth"
+                className="flex items-center justify-between rounded-lg bg-[var(--bg-elevated)] px-3 py-2.5 mb-4 group hover:bg-[var(--bg-surface)] transition-colors"
+              >
+                <span className="text-xs text-[var(--text-muted)]">
+                  See your schedule here
+                </span>
+                <span className="text-xs text-[var(--accent-cyan)] group-hover:underline">
+                  Connect Google →
+                </span>
+              </a>
             )}
 
             {isLoading && <DigestSkeleton />}
@@ -576,16 +681,17 @@ export default function DigestPage() {
                   </span>
                 </div>
 
-                {/* Category breakdown - clickable for future drill-down */}
+                {/* Category breakdown - clickable drill-down */}
                 <div className="grid grid-cols-4 gap-2 mb-4">
                   {Object.entries(insights.weeklyStats.byCategory).map(([cat, count]) => (
                     <button
                       key={cat}
-                      className="text-center rounded-lg bg-[var(--bg-elevated)] p-2 hover:bg-[var(--bg-surface)] transition-colors cursor-pointer"
-                      onClick={() => {
-                        // TODO: Add category drill-down modal
-                        console.log('Drill down to:', cat);
-                      }}
+                      className={`text-center rounded-lg p-2 transition-colors cursor-pointer ${
+                        drillDownCategory === cat
+                          ? 'bg-[var(--accent-cyan-dim)] ring-1 ring-[var(--accent-cyan)]/30'
+                          : 'bg-[var(--bg-elevated)] hover:bg-[var(--bg-surface)]'
+                      }`}
+                      onClick={() => handleCategoryDrillDown(cat)}
                     >
                       <span className="text-sm font-medium text-[var(--text-secondary)] block">
                         {count}
@@ -594,6 +700,34 @@ export default function DigestPage() {
                     </button>
                   ))}
                 </div>
+
+                {/* Category drill-down list */}
+                {drillDownCategory && (
+                  <div className="rounded-xl bg-[var(--bg-elevated)] p-3 mb-4 animate-fade-up">
+                    <p className="text-xs font-medium text-[var(--text-secondary)] mb-2">
+                      {drillDownCategory} this week · {drillDownLoading ? '...' : drillDownItems.length}
+                    </p>
+                    {drillDownLoading ? (
+                      <p className="text-xs text-[var(--text-muted)]">Loading...</p>
+                    ) : drillDownItems.length === 0 ? (
+                      <p className="text-xs text-[var(--text-muted)]">No items this week</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {drillDownItems.slice(0, 8).map(item => (
+                          <div key={item.id} className="flex items-center justify-between py-1">
+                            <span className="text-sm text-[var(--text-primary)] truncate">{item.title}</span>
+                            <span className="text-xs text-[var(--text-muted)] shrink-0 ml-2">
+                              {item.status || item.maturity || ''}
+                            </span>
+                          </div>
+                        ))}
+                        {drillDownItems.length > 8 && (
+                          <p className="text-xs text-[var(--text-muted)] pt-1">+{drillDownItems.length - 8} more</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* AI Analysis */}
                 {insights.aiInsights && (

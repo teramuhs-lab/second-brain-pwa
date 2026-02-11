@@ -159,6 +159,28 @@ export interface ConfirmationState {
   page_id?: string;
 }
 
+// Google Calendar types
+export interface CalendarEvent {
+  id: string;
+  summary: string;
+  description?: string;
+  start: { dateTime?: string; date?: string };
+  end: { dateTime?: string; date?: string };
+  location?: string;
+  htmlLink: string;
+}
+
+// Gmail types
+export interface GmailMessage {
+  id: string;
+  threadId: string;
+  subject: string;
+  from: string;
+  date: string;
+  snippet: string;
+  body?: string;
+}
+
 // Snooze options
 export type SnoozeOption = 'later_today' | 'tomorrow' | 'weekend' | 'next_week' | 'custom';
 

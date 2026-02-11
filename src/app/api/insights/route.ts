@@ -276,7 +276,7 @@ export async function GET() {
           messages: [
             {
               role: 'system',
-              content: 'You are my personal knowledge assistant. Be direct, specific, and reference actual items by name. No generic advice.',
+              content: 'You are my personal productivity assistant. Give exactly 3 numbered insights using bold labels. Reference specific item names. No generic advice. No intro or sign-off.',
             },
             {
               role: 'user',
@@ -294,12 +294,12 @@ ${staleItems.length > 0 ? staleItems.slice(0, 5).map(s => `- "${s.title}" (${s.c
 
 RECENT THEMES: ${recentTexts.slice(0, 10).join(' ').slice(0, 400)}
 
-Give me 2-3 SPECIFIC insights (use actual item names):
-1. What should I prioritize right now and why?
-2. Which stale item should I either complete or archive?
-3. One observation about my focus or momentum.
+Give exactly 3 insights:
+1. **Priority**: What should I focus on right now and why? (name specific items)
+2. **Stale**: Which idle item should I complete, archive, or revisit first?
+3. **Pattern**: One observation about my focus or momentum this week.
 
-Be direct. Under 80 words.`,
+Be direct and specific. Under 100 words.`,
             },
           ],
         });

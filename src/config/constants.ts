@@ -14,6 +14,9 @@ export type DatabaseKey = keyof typeof DATABASE_IDS;
 // Chat sessions database (optional, configured via env)
 export const CHAT_SESSIONS_DB_ID = process.env.NOTION_CHAT_SESSIONS_DB_ID || '';
 
+// Config database for storing Google tokens and other settings
+export const CONFIG_DB_ID = process.env.NOTION_CONFIG_DB_ID || '';
+
 // Map lowercase category names to database keys
 export const CATEGORY_TO_DB: Record<string, DatabaseKey> = {
   people: 'People',

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { isGoogleConnected } from '@/services/google/auth';
+import { fetchTodaysEvents, fetchTomorrowsEvents, fetchWeekEvents, createCalendarEvent, deleteCalendarEvent } from '@/services/google/calendar';
+import { searchEmails as searchGmail, getEmailDetail } from '@/services/google/gmail';
 
 const NOTION_API_KEY = process.env.NOTION_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -148,7 +151,7 @@ const tools: OpenAI.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'search_brain',
-      description: 'Search the Second Brain for items matching a topic, keyword, or name. Use this when the user asks about a topic or wants to find something.',
+      description: 'Search the Second Brain Notion databases for items matching a topic, keyword, or name. Use for People, Projects, Ideas, and Tasks stored in Notion. Do NOT use for calendar, schedule, meetings, or email queries — use read_calendar or search_emails instead.',
       parameters: {
         type: 'object',
         properties: {
@@ -232,6 +235,113 @@ const tools: OpenAI.ChatCompletionTool[] = [
           },
         },
         required: ['title', 'insight'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_calendar',
+      description: 'Read calendar events. Use when user asks about schedule, meetings, or availability.',
+      parameters: {
+        type: 'object',
+        properties: {
+          period: {
+            type: 'string',
+            enum: ['today', 'tomorrow', 'this_week'],
+            description: 'Time period to fetch events for',
+          },
+        },
+        required: ['period'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_calendar_event',
+      description:
+        'Create a new Google Calendar event. Always check availability with read_calendar first before scheduling.',
+      parameters: {
+        type: 'object',
+        properties: {
+          summary: {
+            type: 'string',
+            description: 'Event title/name',
+          },
+          start: {
+            type: 'string',
+            description: 'Start datetime in ISO format (e.g. "2026-02-11T14:00:00")',
+          },
+          end: {
+            type: 'string',
+            description: 'End datetime in ISO format (e.g. "2026-02-11T15:00:00")',
+          },
+          description: {
+            type: 'string',
+            description: 'Event description (optional)',
+          },
+          location: {
+            type: 'string',
+            description: 'Event location (optional)',
+          },
+        },
+        required: ['summary', 'start', 'end'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_emails',
+      description: 'Search Gmail for emails. Use when user asks about emails, messages, or communication.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'Gmail search query (e.g., "from:sarah", "subject:proposal", "newer_than:3d")',
+          },
+          max_results: {
+            type: 'number',
+            description: 'Max emails to return (default 5)',
+          },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_email',
+      description: 'Get full content of a specific email by ID. Use after search_emails when user wants to read an email.',
+      parameters: {
+        type: 'object',
+        properties: {
+          email_id: {
+            type: 'string',
+            description: 'The Gmail message ID',
+          },
+        },
+        required: ['email_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_calendar_event',
+      description: 'Delete/remove a Google Calendar event by its ID. Use read_calendar first to find the event ID.',
+      parameters: {
+        type: 'object',
+        properties: {
+          event_id: {
+            type: 'string',
+            description: 'The Google Calendar event ID to delete',
+          },
+        },
+        required: ['event_id'],
       },
     },
   },
@@ -430,6 +540,178 @@ async function saveIdea(
   }
 }
 
+async function readCalendar(period: string): Promise<string> {
+  try {
+    const connected = await isGoogleConnected();
+    if (!connected) {
+      return JSON.stringify({
+        success: false,
+        error: 'Google Calendar is not connected. The user needs to connect Google from the Digest page.',
+      });
+    }
+
+    let events;
+    let label: string;
+    switch (period) {
+      case 'tomorrow':
+        events = await fetchTomorrowsEvents();
+        label = 'tomorrow';
+        break;
+      case 'this_week':
+        events = await fetchWeekEvents();
+        label = 'this week';
+        break;
+      default:
+        events = await fetchTodaysEvents();
+        label = 'today';
+    }
+
+    return JSON.stringify({
+      success: true,
+      period: label,
+      count: events.length,
+      events: events.map((e) => ({
+        summary: e.summary,
+        start: e.start.dateTime || e.start.date,
+        end: e.end.dateTime || e.end.date,
+        location: e.location,
+        allDay: !!e.start.date,
+      })),
+    });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: `Failed to fetch calendar: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
+async function createCalendarEventTool(
+  summary: string,
+  start: string,
+  end: string,
+  description?: string,
+  location?: string
+): Promise<string> {
+  try {
+    const connected = await isGoogleConnected();
+    if (!connected) {
+      return JSON.stringify({
+        success: false,
+        error: 'Google Calendar is not connected. Connect from Settings.',
+      });
+    }
+
+    const event = await createCalendarEvent({
+      summary,
+      start,
+      end,
+      description,
+      location,
+    });
+
+    return JSON.stringify({
+      success: true,
+      event: {
+        id: event.id,
+        summary: event.summary,
+        start: event.start.dateTime || event.start.date,
+        end: event.end.dateTime || event.end.date,
+        htmlLink: event.htmlLink,
+      },
+    });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: `Failed to create event: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
+async function deleteCalendarEventTool(eventId: string): Promise<string> {
+  try {
+    const connected = await isGoogleConnected();
+    if (!connected) {
+      return JSON.stringify({
+        success: false,
+        error: 'Google Calendar is not connected. Connect from Settings.',
+      });
+    }
+
+    await deleteCalendarEvent(eventId);
+    return JSON.stringify({ success: true, message: `Event deleted successfully.` });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: `Failed to delete event: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
+async function searchEmailsTool(query: string, maxResults?: number): Promise<string> {
+  try {
+    const connected = await isGoogleConnected();
+    if (!connected) {
+      return JSON.stringify({
+        success: false,
+        error: 'Gmail is not connected. The user needs to connect Google from the Digest page.',
+      });
+    }
+
+    const emails = await searchGmail(query, maxResults || 5);
+
+    return JSON.stringify({
+      success: true,
+      query,
+      count: emails.length,
+      emails: emails.map((e) => ({
+        id: e.id,
+        subject: e.subject,
+        from: e.from,
+        date: e.date,
+        snippet: e.snippet,
+      })),
+    });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: `Failed to search emails: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
+async function getEmailTool(emailId: string): Promise<string> {
+  try {
+    const connected = await isGoogleConnected();
+    if (!connected) {
+      return JSON.stringify({
+        success: false,
+        error: 'Gmail is not connected.',
+      });
+    }
+
+    const email = await getEmailDetail(emailId);
+    if (!email) {
+      return JSON.stringify({ success: false, error: 'Email not found' });
+    }
+
+    return JSON.stringify({
+      success: true,
+      email: {
+        subject: email.subject,
+        from: email.from,
+        date: email.date,
+        body: email.body?.slice(0, 2000), // Limit body size for token efficiency
+      },
+    });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: `Failed to fetch email: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
 async function handleToolCall(
   name: string,
   args: Record<string, unknown>
@@ -454,6 +736,22 @@ async function handleToolCall(
         args.insight as string,
         args.category as string | undefined
       );
+    case 'read_calendar':
+      return await readCalendar(args.period as string);
+    case 'create_calendar_event':
+      return await createCalendarEventTool(
+        args.summary as string,
+        args.start as string,
+        args.end as string,
+        args.description as string | undefined,
+        args.location as string | undefined
+      );
+    case 'search_emails':
+      return await searchEmailsTool(args.query as string, args.max_results as number | undefined);
+    case 'get_email':
+      return await getEmailTool(args.email_id as string);
+    case 'delete_calendar_event':
+      return await deleteCalendarEventTool(args.event_id as string);
     default:
       return JSON.stringify({ error: `Unknown tool: ${name}` });
   }
@@ -470,14 +768,25 @@ You have access to these tools:
 - **get_item_details**: Get full details of a specific item
 - **create_task**: Create new tasks/reminders
 - **save_idea**: Save insights as new Ideas
+- **read_calendar**: Check Google Calendar events for today, tomorrow, or this week
+- **create_calendar_event**: Schedule a new calendar event (always check availability first with read_calendar)
+- **delete_calendar_event**: Delete/remove a calendar event by ID (use read_calendar first to find the event)
+- **search_emails**: Search Gmail by sender, subject, date, or keywords
+- **get_email**: Read full email content by ID (use after search_emails)
 
 ## Behavior Guidelines
-1. When the user asks about a topic, use search_brain to find relevant items
+1. **Route queries to the right tool:**
+   - Calendar, schedule, meetings, availability, "what's on my calendar" → use **read_calendar**
+   - Email, messages, inbox, "emails from..." → use **search_emails**
+   - Schedule/create a meeting or event → use **read_calendar** first (check availability), then **create_calendar_event**
+   - Remove/delete/cancel an event → use **read_calendar** first (find the event ID), then **delete_calendar_event**
+   - Everything else (people, projects, ideas, tasks, topics, keywords) → use **search_brain**
 2. Present results clearly organized by category
 3. Include item IDs so you can get more details if asked
 4. Offer helpful follow-up actions (view details, create related tasks, etc.)
 5. For follow-ups like "tell me more", use get_item_details with the item's ID
 6. Be conversational and suggest next steps
+7. When asked to schedule a meeting, ALWAYS check availability first with read_calendar, then create the event with create_calendar_event. Confirm the details before creating.
 
 ## Response Format
 When showing search results, format them clearly:

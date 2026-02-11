@@ -5,6 +5,9 @@ import OpenAI from 'openai';
 import { CitationTracker, Citation } from './citations';
 import { detectDomainHybrid, getResearchSystemPrompt, ExpertDomain, classifyQueryIntent, CASUAL_SYSTEM_PROMPT, FOLLOW_UP_SYSTEM_PROMPT } from './personas';
 import { searchWeb, formatWebResultsForContext, isWebSearchAvailable, SearchFocus } from './web-search';
+import { isGoogleConnected } from '@/services/google/auth';
+import { fetchTodaysEvents, fetchTomorrowsEvents, fetchWeekEvents, createCalendarEvent, deleteCalendarEvent } from '@/services/google/calendar';
+import { searchEmails as searchGmail, getEmailDetail } from '@/services/google/gmail';
 
 // ============= Types =============
 
@@ -57,8 +60,8 @@ const researchTools: OpenAI.ChatCompletionTool[] = [
     function: {
       name: 'search_brain',
       description: `Search the user's Second Brain (Notion databases) for items matching a topic.
-Use this FIRST before web search - the user's own notes and knowledge are most relevant.
-Returns results from People, Projects, Ideas, and Tasks.`,
+Use for People, Projects, Ideas, and Tasks stored in Notion.
+Do NOT use for calendar, schedule, meetings, or email queries — use read_calendar or search_emails instead.`,
       parameters: {
         type: 'object',
         properties: {
@@ -142,6 +145,85 @@ ALWAYS call this before providing your final answer.`,
           },
         },
         required: ['summary', 'ready_to_answer'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_calendar',
+      description: `Read Google Calendar events. Use when user asks about schedule, meetings, availability, or "what's on my calendar".`,
+      parameters: {
+        type: 'object',
+        properties: {
+          period: {
+            type: 'string',
+            enum: ['today', 'tomorrow', 'this_week'],
+            description: 'Time period to fetch events for',
+          },
+        },
+        required: ['period'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_calendar_event',
+      description: 'Create a new Google Calendar event. Always check availability with read_calendar first.',
+      parameters: {
+        type: 'object',
+        properties: {
+          summary: { type: 'string', description: 'Event title/name' },
+          start: { type: 'string', description: 'Start datetime in ISO format (e.g. "2026-02-11T14:00:00")' },
+          end: { type: 'string', description: 'End datetime in ISO format (e.g. "2026-02-11T15:00:00")' },
+          description: { type: 'string', description: 'Event description (optional)' },
+          location: { type: 'string', description: 'Event location (optional)' },
+        },
+        required: ['summary', 'start', 'end'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_emails',
+      description: 'Search Gmail for emails. Use when user asks about emails, messages, or communication.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Gmail search query (e.g., "from:sarah", "subject:proposal")' },
+          max_results: { type: 'number', description: 'Max emails to return (default 5)' },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_email',
+      description: 'Get full content of a specific email by ID. Use after search_emails.',
+      parameters: {
+        type: 'object',
+        properties: {
+          email_id: { type: 'string', description: 'The Gmail message ID' },
+        },
+        required: ['email_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_calendar_event',
+      description: 'Delete/remove a Google Calendar event by its ID. Use read_calendar first to find the event ID.',
+      parameters: {
+        type: 'object',
+        properties: {
+          event_id: { type: 'string', description: 'The Google Calendar event ID to delete' },
+        },
+        required: ['event_id'],
       },
     },
   },
@@ -382,6 +464,178 @@ async function handleGetItemDetails(
   };
 }
 
+// ============= Google Calendar & Email Handlers =============
+
+function formatMeetingLocation(event: { location?: string; hangoutLink?: string; conferenceData?: { entryPoints?: Array<{ entryPointType: string; uri: string; label?: string }> } }): string {
+  // Prefer conferenceData for reliable meeting detection
+  if (event.conferenceData?.entryPoints?.length) {
+    const video = event.conferenceData.entryPoints.find(ep => ep.entryPointType === 'video');
+    if (video) {
+      if (/teams\.microsoft\.com/i.test(video.uri)) return 'Teams Meeting';
+      if (/zoom\.us/i.test(video.uri)) return 'Zoom Meeting';
+      if (/meet\.google\.com/i.test(video.uri)) return 'Google Meet';
+      return 'Online Meeting';
+    }
+  }
+  if (event.hangoutLink) return 'Google Meet';
+
+  // Fall back to parsing location field
+  if (!event.location) return '';
+  if (/teams\.microsoft\.com/i.test(event.location)) return 'Teams Meeting';
+  if (/zoom\.us/i.test(event.location)) return 'Zoom Meeting';
+  if (/meet\.google\.com/i.test(event.location)) return 'Google Meet';
+  if (/^https?:\/\//i.test(event.location)) return 'Online Meeting';
+  return event.location; // Physical location — keep as-is
+}
+
+async function handleReadCalendar(
+  period: string
+): Promise<{ result: string; citations: Omit<Citation, 'number'>[] }> {
+  try {
+    const connected = await isGoogleConnected();
+    if (!connected) {
+      return { result: 'Google Calendar is not connected. Connect from Settings.', citations: [] };
+    }
+
+    let events;
+    let label: string;
+    switch (period) {
+      case 'tomorrow':
+        events = await fetchTomorrowsEvents();
+        label = 'tomorrow';
+        break;
+      case 'this_week':
+        events = await fetchWeekEvents();
+        label = 'this week';
+        break;
+      default:
+        events = await fetchTodaysEvents();
+        label = 'today';
+    }
+
+    if (events.length === 0) {
+      return { result: `No events on your calendar ${label}.`, citations: [] };
+    }
+
+    const eventList = events.map(e => {
+      const time = e.start.dateTime
+        ? new Date(e.start.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+        : 'All day';
+      const endTime = e.end.dateTime
+        ? new Date(e.end.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+        : '';
+
+      // Calculate duration for timed events
+      let duration = '';
+      if (e.start.dateTime && e.end.dateTime) {
+        const mins = (new Date(e.end.dateTime).getTime() - new Date(e.start.dateTime).getTime()) / 60000;
+        if (mins < 60) duration = `${mins}m`;
+        else if (mins % 60 === 0) duration = `${mins / 60}h`;
+        else duration = `${Math.floor(mins / 60)}h ${mins % 60}m`;
+      }
+
+      const location = formatMeetingLocation(e);
+
+      return `- **${time}${endTime ? ` – ${endTime}` : ''}** · ${e.summary}${duration ? ` (${duration})` : ''}${location ? ` · ${location}` : ''} [id:${e.id}]`;
+    }).join('\n');
+
+    return {
+      result: `Calendar events ${label} (${events.length}):\n\n${eventList}`,
+      citations: [],
+    };
+  } catch (error) {
+    return { result: `Failed to fetch calendar: ${error instanceof Error ? error.message : 'Unknown error'}`, citations: [] };
+  }
+}
+
+async function handleCreateCalendarEvent(
+  summary: string, start: string, end: string, description?: string, location?: string
+): Promise<{ result: string; citations: Omit<Citation, 'number'>[] }> {
+  try {
+    const connected = await isGoogleConnected();
+    if (!connected) {
+      return { result: 'Google Calendar is not connected. Connect from Settings.', citations: [] };
+    }
+
+    const event = await createCalendarEvent({ summary, start, end, description, location });
+    return {
+      result: `Created event: "${event.summary}" from ${event.start.dateTime || event.start.date} to ${event.end.dateTime || event.end.date}${event.htmlLink ? ` — ${event.htmlLink}` : ''}`,
+      citations: [],
+    };
+  } catch (error) {
+    return { result: `Failed to create event: ${error instanceof Error ? error.message : 'Unknown error'}`, citations: [] };
+  }
+}
+
+async function handleDeleteCalendarEvent(
+  eventId: string
+): Promise<{ result: string; citations: Omit<Citation, 'number'>[] }> {
+  try {
+    const connected = await isGoogleConnected();
+    if (!connected) {
+      return { result: 'Google Calendar is not connected. Connect from Settings.', citations: [] };
+    }
+
+    await deleteCalendarEvent(eventId);
+    return {
+      result: `Successfully deleted calendar event (ID: ${eventId}).`,
+      citations: [],
+    };
+  } catch (error) {
+    return { result: `Failed to delete event: ${error instanceof Error ? error.message : 'Unknown error'}`, citations: [] };
+  }
+}
+
+async function handleSearchEmails(
+  query: string, maxResults?: number
+): Promise<{ result: string; citations: Omit<Citation, 'number'>[] }> {
+  try {
+    const connected = await isGoogleConnected();
+    if (!connected) {
+      return { result: 'Gmail is not connected. Connect from Settings.', citations: [] };
+    }
+
+    const emails = await searchGmail(query, maxResults || 5);
+    if (emails.length === 0) {
+      return { result: `No emails found for "${query}".`, citations: [] };
+    }
+
+    const emailList = emails.map(e =>
+      `- [${e.id}] "${e.subject}" from ${e.from} (${e.date})\n  ${e.snippet}`
+    ).join('\n\n');
+
+    return {
+      result: `Found ${emails.length} emails:\n\n${emailList}`,
+      citations: [],
+    };
+  } catch (error) {
+    return { result: `Failed to search emails: ${error instanceof Error ? error.message : 'Unknown error'}`, citations: [] };
+  }
+}
+
+async function handleGetEmail(
+  emailId: string
+): Promise<{ result: string; citations: Omit<Citation, 'number'>[] }> {
+  try {
+    const connected = await isGoogleConnected();
+    if (!connected) {
+      return { result: 'Gmail is not connected.', citations: [] };
+    }
+
+    const email = await getEmailDetail(emailId);
+    if (!email) {
+      return { result: 'Email not found.', citations: [] };
+    }
+
+    return {
+      result: `Subject: ${email.subject}\nFrom: ${email.from}\nDate: ${email.date}\n\n${email.body?.slice(0, 2000) || '(no body)'}`,
+      citations: [],
+    };
+  } catch (error) {
+    return { result: `Failed to fetch email: ${error instanceof Error ? error.message : 'Unknown error'}`, citations: [] };
+  }
+}
+
 // ============= Research Loop =============
 
 export async function runResearchLoop(
@@ -538,6 +792,21 @@ export async function runResearchLoop(
             result: `Research summary: ${args.summary}. Ready to answer: ${args.ready_to_answer}`,
             citations: [],
           };
+          break;
+        case 'read_calendar':
+          toolResult = await handleReadCalendar(args.period);
+          break;
+        case 'create_calendar_event':
+          toolResult = await handleCreateCalendarEvent(args.summary, args.start, args.end, args.description, args.location);
+          break;
+        case 'search_emails':
+          toolResult = await handleSearchEmails(args.query, args.max_results);
+          break;
+        case 'get_email':
+          toolResult = await handleGetEmail(args.email_id);
+          break;
+        case 'delete_calendar_event':
+          toolResult = await handleDeleteCalendarEvent(args.event_id);
           break;
         default:
           toolResult = { result: `Unknown tool: ${toolName}`, citations: [] };

@@ -25,21 +25,46 @@ const DOMAIN_STYLES: Record<string, { label: string; color: string }> = {
   research: { label: 'Researcher', color: 'bg-purple-500/20 text-purple-400' },
 };
 
-// Helper to format inline markdown (bold, etc.)
+// Helper to format inline markdown (bold, links)
 function formatInlineMarkdown(text: string): ReactNode[] {
-  const parts = text.split(/\*\*(.*?)\*\*/g);
+  // Split on bold (**text**) and links ([text](url))
+  const pattern = /(\*\*.*?\*\*|\[.*?\]\(.*?\))/g;
+  const parts = text.split(pattern);
+
   if (parts.length === 1) {
     return [text];
   }
-  return parts.map((part, j) =>
-    j % 2 === 1 ? (
-      <strong key={j} className="font-semibold text-[var(--text-primary)]">
-        {part}
-      </strong>
-    ) : (
-      <span key={j}>{part}</span>
-    )
-  );
+
+  return parts.map((part, j) => {
+    // Bold
+    const boldMatch = part.match(/^\*\*(.*?)\*\*$/);
+    if (boldMatch) {
+      return (
+        <strong key={j} className="font-semibold text-[var(--text-primary)]">
+          {boldMatch[1]}
+        </strong>
+      );
+    }
+
+    // Markdown link
+    const linkMatch = part.match(/^\[(.*?)\]\((.*?)\)$/);
+    if (linkMatch) {
+      return (
+        <a
+          key={j}
+          href={linkMatch[2]}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[var(--accent-cyan)] hover:underline"
+        >
+          {linkMatch[1]}
+        </a>
+      );
+    }
+
+    // Plain text
+    return <span key={j}>{part}</span>;
+  });
 }
 
 export function ChatMessage({
