@@ -16,6 +16,8 @@ export interface CalendarEvent {
       label?: string;
     }>;
   };
+  calendarId?: string;
+  calendarName?: string;
 }
 
 export interface CalendarListResponse {

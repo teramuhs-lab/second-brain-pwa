@@ -7,7 +7,7 @@ const GOOGLE_REDIRECT_URI = process.env.NEXT_PUBLIC_APP_URL
   : 'http://localhost:3000/api/google/callback';
 
 const SCOPES = [
-  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/calendar',
   'https://www.googleapis.com/auth/gmail.readonly',
 ].join(' ');
 

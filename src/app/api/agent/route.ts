@@ -332,13 +332,17 @@ const tools: OpenAI.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'delete_calendar_event',
-      description: 'Delete/remove a Google Calendar event by its ID. Use read_calendar first to find the event ID.',
+      description: 'Delete/remove a Google Calendar event by its ID. Use read_calendar first to find the event ID. If the event includes a cal: prefix, pass both the event_id and calendar_id.',
       parameters: {
         type: 'object',
         properties: {
           event_id: {
             type: 'string',
             description: 'The Google Calendar event ID to delete',
+          },
+          calendar_id: {
+            type: 'string',
+            description: 'The calendar ID the event belongs to (optional, defaults to primary)',
           },
         },
         required: ['event_id'],
@@ -628,7 +632,7 @@ async function createCalendarEventTool(
   }
 }
 
-async function deleteCalendarEventTool(eventId: string): Promise<string> {
+async function deleteCalendarEventTool(eventId: string, calendarId?: string): Promise<string> {
   try {
     const connected = await isGoogleConnected();
     if (!connected) {
@@ -638,7 +642,7 @@ async function deleteCalendarEventTool(eventId: string): Promise<string> {
       });
     }
 
-    await deleteCalendarEvent(eventId);
+    await deleteCalendarEvent(eventId, calendarId || 'primary');
     return JSON.stringify({ success: true, message: `Event deleted successfully.` });
   } catch (error) {
     return JSON.stringify({
@@ -751,7 +755,7 @@ async function handleToolCall(
     case 'get_email':
       return await getEmailTool(args.email_id as string);
     case 'delete_calendar_event':
-      return await deleteCalendarEventTool(args.event_id as string);
+      return await deleteCalendarEventTool(args.event_id as string, args.calendar_id as string | undefined);
     default:
       return JSON.stringify({ error: `Unknown tool: ${name}` });
   }

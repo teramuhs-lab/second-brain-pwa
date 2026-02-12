@@ -80,6 +80,10 @@ export async function getStoredRefreshToken(): Promise<string | null> {
 }
 
 export async function storeRefreshToken(token: string): Promise<void> {
+  // Clear cached access token so next request uses the new refresh token
+  // (which may have different/upgraded scopes)
+  cachedAccessToken = null;
+  tokenExpiresAt = 0;
   await upsertConfig('google_refresh_token', token);
 }
 
@@ -99,6 +103,20 @@ export async function removeRefreshToken(): Promise<void> {
 export async function isGoogleConnected(): Promise<boolean> {
   const token = await getStoredRefreshToken();
   return !!token;
+}
+
+export async function getSelectedCalendarIds(): Promise<string[]> {
+  const entry = await findConfigEntry('google_selected_calendars');
+  if (!entry?.value) return ['primary'];
+  try {
+    return JSON.parse(entry.value);
+  } catch {
+    return ['primary'];
+  }
+}
+
+export async function setSelectedCalendarIds(ids: string[]): Promise<void> {
+  await upsertConfig('google_selected_calendars', JSON.stringify(ids));
 }
 
 export async function getAccessToken(): Promise<string | null> {

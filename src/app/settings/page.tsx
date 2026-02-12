@@ -5,10 +5,19 @@ import { useTheme } from '@/components/ThemeProvider';
 
 type GoogleStatus = boolean | null; // null = loading
 
+interface CalendarInfo {
+  id: string;
+  summary: string;
+  primary: boolean;
+  enabled: boolean;
+}
+
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const [googleConnected, setGoogleConnected] = useState<GoogleStatus>(null);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [calendars, setCalendars] = useState<CalendarInfo[]>([]);
+  const [calendarsLoading, setCalendarsLoading] = useState(false);
 
   useEffect(() => {
     fetch('/api/google/status')
@@ -16,6 +25,43 @@ export default function SettingsPage() {
       .then((data) => setGoogleConnected(data.connected))
       .catch(() => setGoogleConnected(false));
   }, []);
+
+  // Fetch calendars when connected
+  useEffect(() => {
+    if (googleConnected !== true) return;
+    setCalendarsLoading(true);
+    fetch('/api/google/calendars')
+      .then((r) => r.json())
+      .then((data) => setCalendars(data.calendars || []))
+      .catch(() => setCalendars([]))
+      .finally(() => setCalendarsLoading(false));
+  }, [googleConnected]);
+
+  const handleToggleCalendar = async (calId: string, enabled: boolean) => {
+    // Optimistic update
+    const updated = calendars.map(c =>
+      c.id === calId ? { ...c, enabled } : c
+    );
+    setCalendars(updated);
+
+    const enabledIds = updated.filter(c => c.enabled).map(c => c.id);
+    // Ensure primary is always included
+    const primaryCal = calendars.find(c => c.primary);
+    if (primaryCal && !enabledIds.includes(primaryCal.id)) {
+      enabledIds.unshift(primaryCal.id);
+    }
+
+    try {
+      await fetch('/api/google/calendars', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ calendarIds: enabledIds }),
+      });
+    } catch {
+      // Revert on failure
+      setCalendars(calendars);
+    }
+  };
 
   const handleDisconnect = async () => {
     setIsDisconnecting(true);
@@ -157,6 +203,59 @@ export default function SettingsPage() {
           ) : null}
         </div>
       </section>
+
+      {/* Calendars — only when Google is connected */}
+      {googleConnected && (
+        <section className="mt-8 animate-fade-up delay-3">
+          <p className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider mb-3">
+            Calendars
+          </p>
+          <div className="rounded-xl bg-[var(--bg-elevated)] overflow-hidden">
+            {calendarsLoading ? (
+              <div className="px-4 py-4">
+                <p className="text-xs text-[var(--text-muted)]">Loading calendars...</p>
+              </div>
+            ) : calendars.length === 0 ? (
+              <div className="px-4 py-4">
+                <p className="text-xs text-[var(--text-muted)]">No calendars found</p>
+              </div>
+            ) : (
+              calendars.map((cal, idx) => (
+                <div key={cal.id}>
+                  {idx > 0 && (
+                    <div className="mx-4 border-t border-[var(--border-subtle)]" />
+                  )}
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-sm text-[var(--text-primary)] truncate block">
+                        {cal.summary}
+                      </span>
+                      {cal.primary && (
+                        <span className="text-[10px] text-[var(--text-muted)]">Primary</span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleToggleCalendar(cal.id, !cal.enabled)}
+                      disabled={cal.primary}
+                      className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${
+                        cal.enabled
+                          ? 'bg-[var(--accent-cyan)]'
+                          : 'bg-[var(--text-muted)]/30'
+                      } ${cal.primary ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                          cal.enabled ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

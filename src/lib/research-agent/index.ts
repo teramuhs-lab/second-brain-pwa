@@ -217,11 +217,12 @@ ALWAYS call this before providing your final answer.`,
     type: 'function',
     function: {
       name: 'delete_calendar_event',
-      description: 'Delete/remove a Google Calendar event by its ID. Use read_calendar first to find the event ID.',
+      description: 'Delete/remove a Google Calendar event by its ID. Use read_calendar first to find the event ID. If the event includes a cal: prefix (e.g. [id:abc|cal:xyz]), pass both the event_id and calendar_id.',
       parameters: {
         type: 'object',
         properties: {
           event_id: { type: 'string', description: 'The Google Calendar event ID to delete' },
+          calendar_id: { type: 'string', description: 'The calendar ID the event belongs to (optional, defaults to primary)' },
         },
         required: ['event_id'],
       },
@@ -536,7 +537,7 @@ async function handleReadCalendar(
 
       const location = formatMeetingLocation(e);
 
-      return `- **${time}${endTime ? ` – ${endTime}` : ''}** · ${e.summary}${duration ? ` (${duration})` : ''}${location ? ` · ${location}` : ''} [id:${e.id}]`;
+      return `- **${time}${endTime ? ` – ${endTime}` : ''}** · ${e.summary}${duration ? ` (${duration})` : ''}${location ? ` · ${location}` : ''}${e.calendarName && e.calendarId !== 'primary' ? ` · _${e.calendarName}_` : ''} [id:${e.id}${e.calendarId && e.calendarId !== 'primary' ? `|cal:${e.calendarId}` : ''}]`;
     }).join('\n');
 
     return {
@@ -568,7 +569,8 @@ async function handleCreateCalendarEvent(
 }
 
 async function handleDeleteCalendarEvent(
-  eventId: string
+  eventId: string,
+  calendarId?: string
 ): Promise<{ result: string; citations: Omit<Citation, 'number'>[] }> {
   try {
     const connected = await isGoogleConnected();
@@ -576,7 +578,7 @@ async function handleDeleteCalendarEvent(
       return { result: 'Google Calendar is not connected. Connect from Settings.', citations: [] };
     }
 
-    await deleteCalendarEvent(eventId);
+    await deleteCalendarEvent(eventId, calendarId || 'primary');
     return {
       result: `Successfully deleted calendar event (ID: ${eventId}).`,
       citations: [],
@@ -806,7 +808,7 @@ export async function runResearchLoop(
           toolResult = await handleGetEmail(args.email_id);
           break;
         case 'delete_calendar_event':
-          toolResult = await handleDeleteCalendarEvent(args.event_id);
+          toolResult = await handleDeleteCalendarEvent(args.event_id, args.calendar_id);
           break;
         default:
           toolResult = { result: `Unknown tool: ${toolName}`, citations: [] };
