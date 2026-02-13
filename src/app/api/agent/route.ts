@@ -396,6 +396,7 @@ async function saveConversationToDB(
 ): Promise<void> {
   const messagesToSave = messages
     .filter(m => m.role === 'user' || m.role === 'assistant')
+    .map(m => ({ role: m.role, content: m.content })) // Strip tool_calls to avoid broken history on reload
     .slice(-20); // Keep last 20 messages
 
   try {
