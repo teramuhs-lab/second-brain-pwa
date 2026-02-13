@@ -1,15 +1,7 @@
 // Shared agent handler functions
 // Core logic for brain search and item details used by both agents
 
-import { DATABASE_IDS, type DatabaseKey } from '@/config/constants';
-import { queryDatabase, getPage } from '@/services/notion/client';
-import {
-  extractTitle,
-  extractSelect,
-  extractDate,
-  extractRichText,
-  extractAllText,
-} from '@/services/notion/helpers';
+import { searchEntries, getEntry, getEntryByNotionId } from '@/services/db/entries';
 
 // ============= Types =============
 
@@ -33,92 +25,102 @@ export interface ItemDetails {
   fields: Record<string, string>;
 }
 
-// ============= Utilities =============
-
-/** Map a Notion database ID back to its category name */
-export function getCategoryFromDbId(dbId: string): string {
-  for (const [category, id] of Object.entries(DATABASE_IDS)) {
-    if (id === dbId) return category;
-  }
-  return 'Unknown';
-}
-
 // ============= Brain Search =============
 
-/** Search Notion databases and return structured results */
+/** Search Neon database using hybrid vector + keyword search */
 export async function searchBrainEntries(
   query: string,
   categories?: string[]
 ): Promise<BrainSearchResult[]> {
-  const queryLower = query.toLowerCase();
-  const categoriesToSearch = categories?.length
-    ? categories
-    : ['People', 'Projects', 'Ideas', 'Admin'];
+  // Map category names to DB category format
+  const categoryFilter = categories?.length === 1
+    ? ({
+        People: 'People',
+        Projects: 'Projects',
+        Ideas: 'Ideas',
+        Admin: 'Admin',
+      }[categories[0]] || undefined)
+    : undefined;
 
-  const allResults: BrainSearchResult[] = [];
+  const results = await searchEntries(query, {
+    category: categoryFilter,
+    limit: 20,
+  });
 
-  for (const category of categoriesToSearch) {
-    const dbId = DATABASE_IDS[category as DatabaseKey];
-    if (!dbId) continue;
+  // Map DB category names to display names
+  const categoryMap: Record<string, string> = {
+    People: 'People',
+    Projects: 'Projects',
+    Ideas: 'Ideas',
+    Admin: 'Admin',
+  };
 
-    try {
-      const pages = await queryDatabase(dbId);
-      const matches = pages.filter((page) => {
-        const text = extractAllText(page.properties as Record<string, unknown>).toLowerCase();
-        return text.includes(queryLower);
-      });
+  return results.map(r => {
+    const content = (r.content as Record<string, unknown>) || {};
+    const contentText = Object.values(content)
+      .filter(v => typeof v === 'string')
+      .join(' ');
 
-      for (const page of matches.slice(0, 5)) {
-        const props = page.properties as Record<string, unknown>;
-        allResults.push({
-          id: page.id,
-          title: extractTitle(props),
-          category,
-          snippet: extractAllText(props).slice(0, 200),
-          status: extractSelect(props, 'Status'),
-          priority: extractSelect(props, 'Priority'),
-          dueDate: extractDate(props, 'Due Date') || extractDate(props, 'Next Follow-up'),
-        });
-      }
-    } catch (error) {
-      console.error(`Error searching ${category}:`, error);
-    }
-  }
-
-  return allResults;
+    return {
+      id: r.notionId || r.id,
+      title: r.title,
+      category: categoryMap[r.category] || r.category,
+      snippet: contentText.slice(0, 200) || r.title,
+      status: r.status || undefined,
+      priority: r.priority || undefined,
+      dueDate: r.dueDate?.toISOString().split('T')[0],
+    };
+  });
 }
 
 // ============= Item Details =============
 
-const DETAIL_FIELDS = [
-  'Company', 'Role', 'Context', 'Notes', 'Next Action',
-  'Raw Insight', 'One-liner', 'Area',
-];
-
-/** Get full details for a Notion page */
+/** Get full details for an entry (by Neon ID or Notion ID) */
 export async function getItemDetailsCore(itemId: string): Promise<ItemDetails | null> {
   try {
-    const page = await getPage(itemId);
-    const props = page.properties as Record<string, unknown>;
+    // Try as Neon UUID first, then as Notion ID
+    let entry = await getEntry(itemId);
+    if (!entry) {
+      entry = await getEntryByNotionId(itemId);
+    }
+    if (!entry) return null;
+
+    const content = (entry.content as Record<string, unknown>) || {};
     const fields: Record<string, string> = {};
 
-    for (const field of DETAIL_FIELDS) {
-      const value = extractRichText(props, field) || extractSelect(props, field);
-      if (value) fields[field] = value;
+    // Map content keys to display field names
+    const fieldMapping: Record<string, string> = {
+      company: 'Company',
+      role: 'Role',
+      context: 'Context',
+      notes: 'Notes',
+      nextAction: 'Next Action',
+      rawInsight: 'Raw Insight',
+      oneLiner: 'One-liner',
+      area: 'Area',
+      adminCategory: 'Category',
+      ideaCategory: 'Category',
+    };
+
+    for (const [key, displayName] of Object.entries(fieldMapping)) {
+      const value = content[key];
+      if (typeof value === 'string' && value) {
+        fields[displayName] = value;
+      }
     }
 
-    const dueDate = extractDate(props, 'Due Date');
-    if (dueDate) fields['Due Date'] = dueDate;
-    const followUp = extractDate(props, 'Next Follow-up');
-    if (followUp) fields['Next Follow-up'] = followUp;
+    if (entry.dueDate) {
+      const dateField = entry.category === 'People' ? 'Next Follow-up' : 'Due Date';
+      fields[dateField] = entry.dueDate.toISOString().split('T')[0];
+    }
 
     return {
-      id: page.id,
-      title: extractTitle(props),
-      status: extractSelect(props, 'Status'),
-      priority: extractSelect(props, 'Priority'),
-      created: page.created_time,
-      lastEdited: page.last_edited_time,
+      id: entry.notionId || entry.id,
+      title: entry.title,
+      status: entry.status || undefined,
+      priority: entry.priority || undefined,
+      created: entry.createdAt.toISOString(),
+      lastEdited: entry.updatedAt.toISOString(),
       fields,
     };
   } catch {

@@ -5,123 +5,59 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { runResearchLoop, ResearchResponse } from '@/lib/research-agent';
 import { Citation } from '@/lib/research-agent/citations';
+import { eq } from 'drizzle-orm';
+import { db } from '@/db';
+import { chatSessions } from '@/db/schema';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const NOTION_API_KEY = process.env.NOTION_API_KEY;
-
-// Chat Sessions database for persistent memory
-const CHAT_SESSIONS_DB_ID = process.env.NOTION_CHAT_SESSIONS_DB_ID || '';
 
 // In-memory conversation cache
 const conversationHistory = new Map<string, Array<{ role: string; content: string }>>();
 
-// ============= Notion Conversation Persistence =============
+// ============= Neon Conversation Persistence =============
 
-async function loadConversationFromNotion(sessionId: string): Promise<Array<{ role: string; content: string }> | null> {
-  if (!CHAT_SESSIONS_DB_ID || !NOTION_API_KEY) return null;
-
+async function loadConversationFromDB(sessionId: string): Promise<Array<{ role: string; content: string }> | null> {
   try {
-    const response = await fetch(`https://api.notion.com/v1/databases/${CHAT_SESSIONS_DB_ID}/query`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${NOTION_API_KEY}`,
-        'Content-Type': 'application/json',
-        'Notion-Version': '2022-06-28',
-      },
-      body: JSON.stringify({
-        filter: {
-          property: 'Session ID',
-          title: { equals: sessionId },
-        },
-        page_size: 1,
-      }),
-    });
+    const [session] = await db
+      .select()
+      .from(chatSessions)
+      .where(eq(chatSessions.sessionId, sessionId))
+      .limit(1);
 
-    if (!response.ok) return null;
+    if (!session?.messages || !Array.isArray(session.messages)) return null;
 
-    const data = await response.json();
-    if (data.results.length === 0) return null;
-
-    const page = data.results[0];
-    const messagesJson = page.properties['Messages']?.rich_text?.[0]?.plain_text;
-
-    if (!messagesJson) return null;
-
-    return JSON.parse(messagesJson);
+    return session.messages as Array<{ role: string; content: string }>;
   } catch (error) {
-    console.error('Error loading conversation from Notion:', error);
+    console.error('Error loading conversation from DB:', error);
     return null;
   }
 }
 
-async function saveConversationToNotion(
+async function saveConversationToDB(
   sessionId: string,
   messages: Array<{ role: string; content: string }>
 ): Promise<void> {
-  if (!CHAT_SESSIONS_DB_ID || !NOTION_API_KEY) return;
-
-  // Only save user and assistant messages
-  const messagesToSave = messages.filter(m => m.role === 'user' || m.role === 'assistant');
-  const messagesJson = JSON.stringify(messagesToSave);
-
-  // Truncate to fit Notion's 2000 char limit
-  const truncatedJson = messagesJson.length > 1900
-    ? JSON.stringify(messagesToSave.slice(-10))
-    : messagesJson;
+  const messagesToSave = messages
+    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .slice(-20);
 
   try {
-    const queryResponse = await fetch(`https://api.notion.com/v1/databases/${CHAT_SESSIONS_DB_ID}/query`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${NOTION_API_KEY}`,
-        'Content-Type': 'application/json',
-        'Notion-Version': '2022-06-28',
-      },
-      body: JSON.stringify({
-        filter: {
-          property: 'Session ID',
-          title: { equals: sessionId },
+    await db
+      .insert(chatSessions)
+      .values({
+        sessionId,
+        messages: messagesToSave,
+        lastActive: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: chatSessions.sessionId,
+        set: {
+          messages: messagesToSave,
+          lastActive: new Date(),
         },
-        page_size: 1,
-      }),
-    });
-
-    const queryData = await queryResponse.json();
-
-    const properties = {
-      'Session ID': { title: [{ text: { content: sessionId } }] },
-      'Messages': { rich_text: [{ text: { content: truncatedJson } }] },
-      'Last Active': { date: { start: new Date().toISOString() } },
-    };
-
-    if (queryData.results?.length > 0) {
-      // Update existing session
-      await fetch(`https://api.notion.com/v1/pages/${queryData.results[0].id}`, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${NOTION_API_KEY}`,
-          'Content-Type': 'application/json',
-          'Notion-Version': '2022-06-28',
-        },
-        body: JSON.stringify({ properties }),
       });
-    } else {
-      // Create new session
-      await fetch('https://api.notion.com/v1/pages', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${NOTION_API_KEY}`,
-          'Content-Type': 'application/json',
-          'Notion-Version': '2022-06-28',
-        },
-        body: JSON.stringify({
-          parent: { database_id: CHAT_SESSIONS_DB_ID },
-          properties,
-        }),
-      });
-    }
   } catch (error) {
-    console.error('Error saving conversation to Notion:', error);
+    console.error('Error saving conversation to DB:', error);
   }
 }
 
@@ -184,13 +120,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<ResearchA
     const sessionId = session_id || 'default-research';
     const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
-    // Load conversation history
+    // Load conversation history from Neon, fall back to in-memory
     let history: Array<{ role: string; content: string }>;
 
-    // Try Notion first
-    const notionHistory = await loadConversationFromNotion(sessionId);
-    if (notionHistory && notionHistory.length > 0) {
-      history = notionHistory;
+    const dbHistory = await loadConversationFromDB(sessionId);
+    if (dbHistory && dbHistory.length > 0) {
+      history = dbHistory;
       conversationHistory.set(sessionId, history);
     } else if (conversationHistory.has(sessionId)) {
       history = conversationHistory.get(sessionId)!;
@@ -213,8 +148,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<ResearchA
 
     conversationHistory.set(sessionId, history);
 
-    // Save to Notion asynchronously
-    saveConversationToNotion(sessionId, history).catch(console.error);
+    // Save to Neon asynchronously
+    saveConversationToDB(sessionId, history).catch(console.error);
 
     // Format response
     const response: ResearchAPIResponse = {
@@ -266,8 +201,9 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Clear in-memory
+    // Clear in-memory and DB
     conversationHistory.delete(sessionId);
+    await db.delete(chatSessions).where(eq(chatSessions.sessionId, sessionId));
 
     return NextResponse.json({ status: 'success', message: 'Research session cleared' });
   } catch (error) {

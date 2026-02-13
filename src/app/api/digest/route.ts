@@ -3,9 +3,10 @@ import OpenAI from 'openai';
 import { isGoogleConnected } from '@/services/google/auth';
 import { fetchTodaysEvents } from '@/services/google/calendar';
 import type { CalendarEvent } from '@/services/google/types';
-import { DATABASE_IDS } from '@/config/constants';
-import { queryDatabase, type NotionPage } from '@/services/notion/client';
-import { extractTitle, extractSelect, extractDate, extractRichText } from '@/services/notion/helpers';
+import { queryEntries } from '@/services/db/entries';
+import { gte } from 'drizzle-orm';
+import { db } from '@/db';
+import { inboxLog } from '@/db/schema';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -36,51 +37,52 @@ async function fetchDailyData(): Promise<{
   followups: DigestItem[];
   calendarEvents: CalendarEvent[];
 }> {
-  const [projectPages, adminPages, peoplePages, calendarEvents] = await Promise.all([
-    queryDatabase(DATABASE_IDS.Projects, undefined, [{ property: 'Priority', direction: 'ascending' }]),
-    queryDatabase(DATABASE_IDS.Admin, undefined, [{ property: 'Priority', direction: 'ascending' }]),
-    queryDatabase(DATABASE_IDS.People),
+  const [projectEntries, adminEntries, peopleEntries, calendarEvents] = await Promise.all([
+    queryEntries({ category: 'Projects', status: 'Active', orderBy: 'created_at', orderDir: 'desc' }),
+    queryEntries({ category: 'Admin', status: 'Todo', orderBy: 'created_at', orderDir: 'desc' }),
+    queryEntries({ category: 'People' }),
     fetchCalendarOrEmpty(),
   ]);
 
-  // Filter projects: Status = 'Active'
-  const projects: DigestItem[] = projectPages
-    .filter((page) => extractSelect(page.properties, 'Status')?.toLowerCase() === 'active')
-    .map((page) => ({
-      id: page.id,
-      title: extractTitle(page.properties),
-      status: extractSelect(page.properties, 'Status'),
-      priority: extractSelect(page.properties, 'Priority'),
-      dueDate: extractDate(page.properties, 'Due Date'),
-      nextAction: extractRichText(page.properties, 'Next Action') || undefined,
-    }));
+  const projects: DigestItem[] = projectEntries.map(entry => {
+    const content = (entry.content as Record<string, unknown>) || {};
+    return {
+      id: entry.notionId || entry.id,
+      title: entry.title,
+      status: entry.status || undefined,
+      priority: entry.priority || undefined,
+      dueDate: entry.dueDate?.toISOString().split('T')[0],
+      nextAction: (content.nextAction as string) || undefined,
+    };
+  });
 
-  // Filter admin: Status = 'Todo'
-  const tasks: DigestItem[] = adminPages
-    .filter((page) => extractSelect(page.properties, 'Status')?.toLowerCase() === 'todo')
-    .map((page) => ({
-      id: page.id,
-      title: extractTitle(page.properties),
-      status: extractSelect(page.properties, 'Status'),
-      priority: extractSelect(page.properties, 'Priority'),
-      dueDate: extractDate(page.properties, 'Due Date'),
-      category: extractSelect(page.properties, 'Category'),
-    }));
+  const tasks: DigestItem[] = adminEntries.map(entry => {
+    const content = (entry.content as Record<string, unknown>) || {};
+    return {
+      id: entry.notionId || entry.id,
+      title: entry.title,
+      status: entry.status || undefined,
+      priority: entry.priority || undefined,
+      dueDate: entry.dueDate?.toISOString().split('T')[0],
+      category: (content.adminCategory as string) || undefined,
+    };
+  });
 
-  // Filter people: Next Follow-up <= today
-  const today = new Date().toISOString().split('T')[0];
-  const followups: DigestItem[] = peoplePages
-    .filter((page) => {
-      const nextFollowup = extractDate(page.properties, 'Next Follow-up');
-      return nextFollowup && nextFollowup <= today;
-    })
-    .map((page) => ({
-      id: page.id,
-      title: extractTitle(page.properties),
-      status: extractSelect(page.properties, 'Status'),
-      company: extractRichText(page.properties, 'Company') || undefined,
-      dueDate: extractDate(page.properties, 'Next Follow-up'),
-    }));
+  // Filter people: due follow-ups (dueDate <= today)
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  const followups: DigestItem[] = peopleEntries
+    .filter(entry => entry.dueDate && entry.dueDate <= today)
+    .map(entry => {
+      const content = (entry.content as Record<string, unknown>) || {};
+      return {
+        id: entry.notionId || entry.id,
+        title: entry.title,
+        status: entry.status || undefined,
+        company: (content.company as string) || undefined,
+        dueDate: entry.dueDate?.toISOString().split('T')[0],
+      };
+    });
 
   return { projects, tasks, followups, calendarEvents };
 }
@@ -93,43 +95,30 @@ async function fetchWeeklyData(): Promise<{
 }> {
   const oneWeekAgo = new Date();
   oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-  const weekAgoISO = oneWeekAgo.toISOString();
 
-  const [inboxPages, adminPages, projectPages] = await Promise.all([
-    queryDatabase(DATABASE_IDS.InboxLog, {
-      timestamp: 'created_time',
-      created_time: { past_week: {} },
-    }),
-    queryDatabase(DATABASE_IDS.Admin),
-    queryDatabase(DATABASE_IDS.Projects),
+  const [adminEntries, projectEntries, inboxEntries] = await Promise.all([
+    queryEntries({ category: 'Admin', status: 'Done' }),
+    queryEntries({ category: 'Projects', status: 'Complete' }),
+    db.select().from(inboxLog).where(gte(inboxLog.createdAt, oneWeekAgo)),
   ]);
 
-  // Filter completed tasks: Status = 'Done' & edited this week
-  const completedTasks: DigestItem[] = adminPages
-    .filter((page) => {
-      const status = extractSelect(page.properties, 'Status')?.toLowerCase();
-      return status === 'done' && page.last_edited_time >= weekAgoISO;
-    })
-    .map((page) => ({
-      id: page.id,
-      title: extractTitle(page.properties),
-      status: extractSelect(page.properties, 'Status'),
-      priority: extractSelect(page.properties, 'Priority'),
+  const completedTasks: DigestItem[] = adminEntries
+    .filter(entry => entry.updatedAt >= oneWeekAgo)
+    .map(entry => ({
+      id: entry.notionId || entry.id,
+      title: entry.title,
+      status: entry.status || undefined,
+      priority: entry.priority || undefined,
     }));
 
-  // Filter completed projects: Status = 'Complete' & edited this week
-  const completedProjects: DigestItem[] = projectPages
-    .filter((page) => {
-      const status = extractSelect(page.properties, 'Status')?.toLowerCase();
-      return status === 'complete' && page.last_edited_time >= weekAgoISO;
-    })
-    .map((page) => ({
-      id: page.id,
-      title: extractTitle(page.properties),
-      status: extractSelect(page.properties, 'Status'),
+  const completedProjects: DigestItem[] = projectEntries
+    .filter(entry => entry.updatedAt >= oneWeekAgo)
+    .map(entry => ({
+      id: entry.notionId || entry.id,
+      title: entry.title,
+      status: entry.status || undefined,
     }));
 
-  // Group inbox entries by category
   const inboxByCategory: Record<string, DigestItem[]> = {
     People: [],
     Project: [],
@@ -137,23 +126,23 @@ async function fetchWeeklyData(): Promise<{
     Admin: [],
   };
 
-  inboxPages.forEach((page) => {
-    const category = extractSelect(page.properties, 'Category') || 'Admin';
+  for (const log of inboxEntries) {
+    const category = log.category || 'Admin';
     const item: DigestItem = {
-      id: page.id,
-      title: extractTitle(page.properties),
+      id: log.notionId || log.id,
+      title: log.rawInput,
       category,
     };
     if (inboxByCategory[category]) {
       inboxByCategory[category].push(item);
     }
-  });
+  }
 
   return {
     completedTasks,
     completedProjects,
     inboxByCategory,
-    totalInbox: inboxPages.length,
+    totalInbox: inboxEntries.length,
   };
 }
 

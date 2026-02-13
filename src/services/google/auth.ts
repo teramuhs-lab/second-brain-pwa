@@ -1,10 +1,10 @@
 // Google OAuth token management
-// Stores refresh token in Notion Config DB (server-side only)
+// Stores refresh token in Neon config table (server-side only)
 
-import { CONFIG_DB_ID } from '@/config/constants';
+import { eq } from 'drizzle-orm';
+import { db } from '@/db';
+import { config } from '@/db/schema';
 
-const NOTION_API_KEY = process.env.NOTION_API_KEY;
-const NOTION_VERSION = '2022-06-28';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 
@@ -12,90 +12,50 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 let cachedAccessToken: string | null = null;
 let tokenExpiresAt = 0;
 
-function notionHeaders(): HeadersInit {
-  return {
-    Authorization: `Bearer ${NOTION_API_KEY}`,
-    'Content-Type': 'application/json',
-    'Notion-Version': NOTION_VERSION,
-  };
-}
-
 // Find config entry by key
-async function findConfigEntry(key: string): Promise<{ id: string; value: string } | null> {
-  if (!CONFIG_DB_ID || !NOTION_API_KEY) return null;
+async function findConfigEntry(key: string): Promise<{ id: string; value: unknown } | null> {
+  const [entry] = await db
+    .select()
+    .from(config)
+    .where(eq(config.key, key))
+    .limit(1);
 
-  const res = await fetch(`https://api.notion.com/v1/databases/${CONFIG_DB_ID}/query`, {
-    method: 'POST',
-    headers: notionHeaders(),
-    body: JSON.stringify({
-      filter: {
-        property: 'Key',
-        title: { equals: key },
-      },
-    }),
-  });
-
-  if (!res.ok) return null;
-
-  const data = await res.json();
-  const page = data.results?.[0];
-  if (!page) return null;
-
-  const value = page.properties?.Value?.rich_text?.[0]?.plain_text || '';
-  return { id: page.id, value };
+  if (!entry) return null;
+  return { id: entry.id, value: entry.value };
 }
 
-// Store or update a config entry
-async function upsertConfig(key: string, value: string): Promise<void> {
-  const existing = await findConfigEntry(key);
+// Store or update a config entry (wraps value in {data: ...} for jsonb compatibility)
+async function upsertConfig(key: string, value: unknown): Promise<void> {
+  const wrapped = { data: value } as Record<string, unknown>;
+  await db
+    .insert(config)
+    .values({ key, value: wrapped })
+    .onConflictDoUpdate({
+      target: config.key,
+      set: { value: wrapped },
+    });
+}
 
-  if (existing) {
-    await fetch(`https://api.notion.com/v1/pages/${existing.id}`, {
-      method: 'PATCH',
-      headers: notionHeaders(),
-      body: JSON.stringify({
-        properties: {
-          Value: { rich_text: [{ text: { content: value } }] },
-        },
-      }),
-    });
-  } else {
-    await fetch('https://api.notion.com/v1/pages', {
-      method: 'POST',
-      headers: notionHeaders(),
-      body: JSON.stringify({
-        parent: { database_id: CONFIG_DB_ID },
-        properties: {
-          Key: { title: [{ text: { content: key } }] },
-          Value: { rich_text: [{ text: { content: value } }] },
-        },
-      }),
-    });
-  }
+// Delete a config entry
+async function deleteConfig(key: string): Promise<void> {
+  await db.delete(config).where(eq(config.key, key));
 }
 
 export async function getStoredRefreshToken(): Promise<string | null> {
   const entry = await findConfigEntry('google_refresh_token');
-  return entry?.value || null;
+  const val = entry?.value as Record<string, unknown> | null;
+  return (val?.data as string) || null;
 }
 
 export async function storeRefreshToken(token: string): Promise<void> {
   // Clear cached access token so next request uses the new refresh token
-  // (which may have different/upgraded scopes)
   cachedAccessToken = null;
   tokenExpiresAt = 0;
   await upsertConfig('google_refresh_token', token);
 }
 
 export async function removeRefreshToken(): Promise<void> {
-  const entry = await findConfigEntry('google_refresh_token');
-  if (entry) {
-    await fetch(`https://api.notion.com/v1/pages/${entry.id}`, {
-      method: 'PATCH',
-      headers: notionHeaders(),
-      body: JSON.stringify({ archived: true }),
-    });
-  }
+  await deleteConfig('google_refresh_token');
   cachedAccessToken = null;
   tokenExpiresAt = 0;
 }
@@ -109,14 +69,16 @@ export async function getSelectedCalendarIds(): Promise<string[]> {
   const entry = await findConfigEntry('google_selected_calendars');
   if (!entry?.value) return ['primary'];
   try {
-    return JSON.parse(entry.value);
+    if (typeof entry.value === 'string') return JSON.parse(entry.value);
+    if (Array.isArray(entry.value)) return entry.value as string[];
+    return ['primary'];
   } catch {
     return ['primary'];
   }
 }
 
 export async function setSelectedCalendarIds(ids: string[]): Promise<void> {
-  await upsertConfig('google_selected_calendars', JSON.stringify(ids));
+  await upsertConfig('google_selected_calendars', ids);
 }
 
 export async function getAccessToken(): Promise<string | null> {

@@ -11,12 +11,6 @@ export const DATABASE_IDS = {
 
 export type DatabaseKey = keyof typeof DATABASE_IDS;
 
-// Chat sessions database (optional, configured via env)
-export const CHAT_SESSIONS_DB_ID = process.env.NOTION_CHAT_SESSIONS_DB_ID || '';
-
-// Config database for storing Google tokens and other settings
-export const CONFIG_DB_ID = process.env.NOTION_CONFIG_DB_ID || '';
-
 // Map lowercase category names to database keys
 export const CATEGORY_TO_DB: Record<string, DatabaseKey> = {
   people: 'People',
@@ -60,13 +54,3 @@ export const TITLE_PROPERTY: Record<string, string> = {
   Admin: 'Task',
 };
 
-// n8n webhook base URL
-export const N8N_BASE_URL = process.env.NEXT_PUBLIC_N8N_URL || 'https://n8n.srv1236227.hstgr.cloud';
-
-// API endpoints for n8n webhooks
-export const N8N_ENDPOINTS = {
-  capture: `${N8N_BASE_URL}/webhook/sb-pwa-v1`,
-  fix: `${N8N_BASE_URL}/webhook/sb-pwa-fix`,
-  update: `${N8N_BASE_URL}/webhook/sb-pwa-update`,
-  fetch: `${N8N_BASE_URL}/webhook/sb-pwa-fetch`,
-} as const;

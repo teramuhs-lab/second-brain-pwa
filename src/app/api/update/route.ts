@@ -1,48 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { updateEntry, getEntryByNotionId } from '@/services/db/entries';
+import type { UpdateEntryInput } from '@/services/db/entries';
 
-const NOTION_API_KEY = process.env.NOTION_API_KEY;
+// Map frontend field keys to Neon content keys
+const CONTENT_FIELDS = new Set([
+  'notes', 'context', 'next_action', 'raw_insight', 'one_liner', 'source',
+]);
 
-// Field name mappings for different databases
-const FIELD_MAPPINGS: Record<string, Record<string, string>> = {
-  admin: {
-    notes: 'Notes',
-    status: 'Status',
-    priority: 'Priority',
-    due_date: 'Due Date',
-  },
-  projects: {
-    notes: 'Notes',
-    status: 'Status',
-    priority: 'Priority',
-    due_date: 'Due Date',
-    next_action: 'Next Action',
-  },
-  ideas: {
-    notes: 'Notes',
-    raw_insight: 'Raw Insight',
-    one_liner: 'One-liner',
-    status: 'Status',
-    maturity: 'Maturity',
-    source: 'Source',
-  },
-  people: {
-    notes: 'Notes',
-    status: 'Status',
-    context: 'Context',
-    next_followup: 'Next Follow-up',
-    last_contact: 'Last Contact',
-  },
+const CONTENT_KEY_MAP: Record<string, string> = {
+  notes: 'notes',
+  context: 'context',
+  next_action: 'nextAction',
+  raw_insight: 'rawInsight',
+  one_liner: 'oneLiner',
+  source: 'source',
 };
 
 export async function POST(request: NextRequest) {
   try {
-    if (!NOTION_API_KEY) {
-      return NextResponse.json(
-        { status: 'error', error: 'NOTION_API_KEY not configured' },
-        { status: 500 }
-      );
-    }
-
     const body = await request.json();
     const { page_id, database, updates } = body;
 
@@ -53,53 +28,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const fieldMap = FIELD_MAPPINGS[database] || {};
-    const properties: Record<string, unknown> = {};
+    // Find entry in Neon by Notion ID
+    const entry = await getEntryByNotionId(page_id);
+    if (!entry) {
+      return NextResponse.json(
+        { status: 'error', error: 'Entry not found in database' },
+        { status: 404 }
+      );
+    }
 
-    // Map update fields to Notion property format
+    // Build Neon update input
+    const updateInput: UpdateEntryInput = {};
+    const contentUpdates: Record<string, unknown> = {};
+
     for (const [key, value] of Object.entries(updates)) {
-      const notionField = fieldMap[key] || key;
-
-      if (key === 'notes' || key === 'context' || key === 'next_action' || key === 'raw_insight' || key === 'one_liner') {
-        // Rich text field
-        properties[notionField] = {
-          rich_text: [{ text: { content: String(value) } }],
-        };
-      } else if (key === 'status' || key === 'priority' || key === 'maturity') {
-        // Select field
-        properties[notionField] = {
-          select: { name: String(value) },
-        };
+      if (key === 'status' || key === 'maturity') {
+        updateInput.status = String(value);
+      } else if (key === 'priority') {
+        updateInput.priority = String(value);
       } else if (key === 'due_date' || key === 'next_followup' || key === 'last_contact') {
-        // Date field
-        properties[notionField] = {
-          date: value ? { start: String(value) } : null,
-        };
-      } else if (key === 'source') {
-        // URL field
-        properties[notionField] = {
-          url: value ? String(value) : null,
-        };
+        updateInput.dueDate = value ? String(value) : null;
+      } else if (CONTENT_FIELDS.has(key)) {
+        const neonKey = CONTENT_KEY_MAP[key] || key;
+        contentUpdates[neonKey] = String(value);
       }
     }
 
-    // Update the Notion page
-    const response = await fetch(`https://api.notion.com/v1/pages/${page_id}`, {
-      method: 'PATCH',
-      headers: {
-        Authorization: `Bearer ${NOTION_API_KEY}`,
-        'Content-Type': 'application/json',
-        'Notion-Version': '2022-06-28',
-      },
-      body: JSON.stringify({ properties }),
-    });
+    if (Object.keys(contentUpdates).length > 0) {
+      updateInput.content = contentUpdates;
+    }
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Notion update error:', errorText, 'Properties sent:', JSON.stringify(properties));
+    // Update via dual-write service (Neon + Notion)
+    const updated = await updateEntry(entry.id, updateInput);
+
+    if (!updated) {
       return NextResponse.json(
-        { status: 'error', error: `Notion API error: ${response.status}`, details: errorText },
-        { status: response.status }
+        { status: 'error', error: 'Failed to update entry' },
+        { status: 500 }
       );
     }
 

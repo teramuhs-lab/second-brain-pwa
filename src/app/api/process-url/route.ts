@@ -2,13 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import OpenAI from 'openai';
 import { YoutubeTranscript } from 'youtube-transcript';
+import { createEntry } from '@/services/db/entries';
 
 // Environment variables
-const NOTION_API_KEY = process.env.NOTION_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
-// Notion Database IDs
-const IDEAS_DB_ID = '2f092129-b3db-8121-b140-f7a8f4ec2a45';
 
 // URL type detection
 type UrlType = 'youtube' | 'twitter' | 'article' | 'generic';
@@ -555,174 +552,31 @@ Output STRICT JSON (no markdown):
   return defaultSummary;
 }
 
-// Create Notion page in Ideas database with rich summary
-async function createNotionIdea(data: {
+// Create Idea entry via dual-write service (Neon + Notion)
+async function createIdeaEntry(data: {
   title: string;
   url: string;
   summary: RichSummary;
 }): Promise<string | null> {
-  if (!NOTION_API_KEY) {
-    console.error('NOTION_API_KEY not configured');
-    return null;
-  }
-
-  // Format the rich summary as markdown for Notion
-  const sections: string[] = [];
-
-  // TL;DR
-  sections.push(`## TL;DR\n${data.summary.tldr}`);
-
-  // Full Summary
-  if (data.summary.full_summary) {
-    sections.push(`## Full Summary\n${data.summary.full_summary}`);
-  }
-
-  // Main Ideas with details
-  if (data.summary.main_ideas.length > 0) {
-    sections.push(`## Main Ideas\n${data.summary.main_ideas.map(idea => {
-      const details = idea.details?.length > 0 ? `\n${idea.details.map(d => `  - ${d}`).join('\n')}` : '';
-      return `### ${idea.title}\n${idea.explanation}${details}`;
-    }).join('\n\n')}`);
-  }
-
-  // Key Takeaways
-  if (data.summary.key_takeaways.length > 0) {
-    sections.push(`## Key Takeaways\n${data.summary.key_takeaways.map(t => `- ${t}`).join('\n')}`);
-  }
-
-  // Statistics & Data
-  if (data.summary.statistics_and_data?.length > 0) {
-    sections.push(`## Statistics & Data\n${data.summary.statistics_and_data.map(s => `- 📊 ${s}`).join('\n')}`);
-  }
-
-  // Examples & Cases
-  if (data.summary.examples_and_cases?.length > 0) {
-    sections.push(`## Examples & Case Studies\n${data.summary.examples_and_cases.map(e => `- ${e}`).join('\n')}`);
-  }
-
-  // Frameworks & Models
-  if (data.summary.frameworks_and_models?.length > 0) {
-    sections.push(`## Frameworks & Models\n${data.summary.frameworks_and_models.map(fw => {
-      const steps = fw.steps && fw.steps.length > 0 ? `\n${fw.steps.map((s, i) => `  ${i + 1}. ${s}`).join('\n')}` : '';
-      return `### ${fw.name}\n${fw.description}${steps}`;
-    }).join('\n\n')}`);
-  }
-
-  // Tools & Resources
-  if (data.summary.tools_and_resources?.length > 0) {
-    sections.push(`## Tools & Resources\n${data.summary.tools_and_resources.map(t => `- 🔧 ${t}`).join('\n')}`);
-  }
-
-  // Definitions
-  if (data.summary.definitions?.length > 0) {
-    sections.push(`## Key Definitions\n${data.summary.definitions.map(d => `**${d.term}**: ${d.definition}`).join('\n\n')}`);
-  }
-
-  // Notable Quotes
-  if (data.summary.notable_quotes.length > 0) {
-    sections.push(`## Notable Quotes\n${data.summary.notable_quotes.map(q => `> "${q}"`).join('\n\n')}`);
-  }
-
-  // Timestamps (for videos)
-  if (data.summary.timestamps && data.summary.timestamps.length > 0) {
-    sections.push(`## Timestamps\n${data.summary.timestamps.map(ts => `- **${ts.time}** - ${ts.topic}`).join('\n')}`);
-  }
-
-  // Action Items
-  if (data.summary.action_items.length > 0) {
-    sections.push(`## Action Items\n${data.summary.action_items.map(a => `- [ ] ${a}`).join('\n')}`);
-  }
-
-  // Questions to Consider
-  if (data.summary.questions_to_consider.length > 0) {
-    sections.push(`## Questions to Consider\n${data.summary.questions_to_consider.map(q => `- ❓ ${q}`).join('\n')}`);
-  }
-
-  // Related Topics
-  if (data.summary.related_topics.length > 0) {
-    sections.push(`## Related Topics\n${data.summary.related_topics.map(t => `\`${t}\``).join(' • ')}`);
-  }
-
-  sections.push(`---\n*Source: ${data.url}*\n*Complexity: ${data.summary.complexity}*`);
-
-  const rawInsight = sections.join('\n\n');
-
-  // Store structured JSON for rich rendering in Reading page
-  // Notion has a 2000 char limit per text block, so we split the JSON across multiple blocks
-  const structuredJson = JSON.stringify(data.summary);
-
-  // Create code blocks for the JSON, splitting if needed (Notion limit is 2000 chars per rich_text)
-  type CodeBlock = {
-    object: 'block';
-    type: 'code';
-    code: {
-      language: 'json';
-      rich_text: Array<{ type: 'text'; text: { content: string } }>;
-    };
-  };
-  const jsonBlocks: CodeBlock[] = [];
-
-  // Split JSON into chunks of 2000 chars max
-  const chunkSize = 2000;
-  for (let i = 0; i < structuredJson.length; i += chunkSize) {
-    const chunk = structuredJson.slice(i, i + chunkSize);
-    jsonBlocks.push({
-      object: 'block',
-      type: 'code',
-      code: {
-        language: 'json',
-        rich_text: [
-          {
-            type: 'text',
-            text: { content: chunk }
-          }
-        ]
-      }
-    });
-  }
-
-  const response = await fetch('https://api.notion.com/v1/pages', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${NOTION_API_KEY}`,
-      'Content-Type': 'application/json',
-      'Notion-Version': '2022-06-28',
-    },
-    body: JSON.stringify({
-      parent: { database_id: IDEAS_DB_ID },
-      properties: {
-        Title: {
-          title: [{ text: { content: data.title.slice(0, 100) } }],
-        },
-        'One-liner': {
-          rich_text: [{ text: { content: data.summary.one_liner.slice(0, 200) } }],
-        },
-        'Raw Insight': {
-          rich_text: [{ text: { content: rawInsight.slice(0, 2000) } }],
-        },
-        Source: {
-          url: data.url,
-        },
-        Category: {
-          select: { name: data.summary.category },
-        },
-        Maturity: {
-          select: { name: 'Spark' },
-        },
+  try {
+    const newEntry = await createEntry({
+      category: 'Idea',
+      title: data.title.slice(0, 100),
+      content: {
+        oneLiner: data.summary.one_liner.slice(0, 200),
+        rawInsight: data.summary.tldr,
+        source: data.url,
+        ideaCategory: data.summary.category,
+        // Store full structured summary in Neon jsonb for rich rendering
+        structuredSummary: data.summary,
       },
-      // Store full structured summary as JSON code blocks for rich rendering
-      children: jsonBlocks
-    }),
-  });
+    });
 
-  if (!response.ok) {
-    const error = await response.text();
-    console.error('Notion API error:', error);
+    return newEntry.notionId || newEntry.id;
+  } catch (error) {
+    console.error('Failed to create idea entry:', error);
     return null;
   }
-
-  const result = await response.json();
-  return result.id;
 }
 
 // Main POST handler
@@ -766,8 +620,8 @@ export async function POST(request: NextRequest) {
       urlType
     );
 
-    // Create Notion page with rich summary
-    const pageId = await createNotionIdea({
+    // Create Idea entry via dual-write (Neon + Notion)
+    const pageId = await createIdeaEntry({
       title: extracted.title,
       url: url,
       summary: summary,

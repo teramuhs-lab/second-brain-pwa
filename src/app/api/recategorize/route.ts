@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { DATABASE_IDS, CATEGORY_DB_IDS, DEFAULT_STATUS, TITLE_PROPERTY } from '@/config/constants';
-import { createPage, archivePage } from '@/services/notion/client';
+import { createEntry, archiveEntry, getEntryByNotionId, createInboxLogEntry } from '@/services/db/entries';
+
+type Category = 'People' | 'Project' | 'Idea' | 'Admin';
+const VALID_CATEGORIES = new Set(['People', 'Project', 'Idea', 'Admin']);
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,62 +17,51 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const targetDbId = CATEGORY_DB_IDS[new_category];
-    if (!targetDbId) {
+    if (!VALID_CATEGORIES.has(new_category)) {
       return NextResponse.json(
         { status: 'error', error: `Invalid category: ${new_category}` },
         { status: 400 }
       );
     }
 
-    // Step 1: Archive the old page
+    // Step 1: Archive the old entry via dual-write (Neon + Notion)
     try {
-      await archivePage(page_id);
+      const oldEntry = await getEntryByNotionId(page_id);
+      if (oldEntry) {
+        await archiveEntry(oldEntry.id);
+      }
     } catch (error) {
-      console.error('Failed to archive old page:', error);
+      console.error('Failed to archive old entry:', error);
     }
 
-    // Step 2: Create new page in target database
-    const titleProperty = TITLE_PROPERTY[new_category];
-    const defaultStatus = DEFAULT_STATUS[new_category];
-
-    const properties: Record<string, unknown> = {
-      [titleProperty]: {
-        title: [{ text: { content: raw_text } }],
-      },
-    };
-
-    // Ideas uses Maturity instead of Status
-    if (new_category !== 'Idea') {
-      properties['Status'] = { select: { name: defaultStatus } };
-    }
-
-    // Add category-specific defaults
+    // Step 2: Build category-specific content defaults
+    const content: Record<string, unknown> = {};
     if (new_category === 'Admin') {
-      properties['Priority'] = { select: { name: 'Medium' } };
-      properties['Category'] = { select: { name: 'Home' } };
+      content.adminCategory = 'Home';
     } else if (new_category === 'Project') {
-      properties['Priority'] = { select: { name: 'Medium' } };
-      properties['Area'] = { select: { name: 'Work' } };
+      content.area = 'Work';
     } else if (new_category === 'Idea') {
-      properties['Category'] = { select: { name: 'Life' } };
-      properties['Maturity'] = { select: { name: 'Spark' } };
+      content.ideaCategory = 'Life';
     } else if (new_category === 'People') {
-      properties['Last Contact'] = {
-        date: { start: new Date().toISOString().split('T')[0] },
-      };
+      content.lastContact = new Date().toISOString().split('T')[0];
     }
 
-    const newPage = await createPage(targetDbId, properties);
+    // Step 3: Create new entry via dual-write (Neon + Notion)
+    const newEntry = await createEntry({
+      category: new_category as Category,
+      title: raw_text,
+      priority: (new_category === 'Admin' || new_category === 'Project') ? 'Medium' : undefined,
+      content,
+    });
 
-    // Step 3: Log to Inbox Log database
+    // Step 4: Log to Inbox Log via dual-write
     try {
-      await createPage(DATABASE_IDS.InboxLog, {
-        'Raw Input': { title: [{ text: { content: raw_text } }] },
-        'Category': { select: { name: new_category } },
-        'Confidence': { number: 1.0 },
-        'Destination ID': { rich_text: [{ text: { content: newPage.id } }] },
-        'Status': { select: { name: 'Fixed' } },
+      await createInboxLogEntry({
+        rawInput: raw_text,
+        category: new_category,
+        confidence: 1.0,
+        destinationId: newEntry.notionId || newEntry.id,
+        status: 'Fixed',
       });
     } catch (logError) {
       console.error('Failed to log to Inbox Log:', logError);
@@ -80,7 +71,7 @@ export async function POST(request: NextRequest) {
       status: 'fixed',
       from_category: current_category,
       to_category: new_category,
-      page_id: newPage.id,
+      page_id: newEntry.notionId || newEntry.id,
       message: `Moved from ${current_category} to ${new_category}`,
     });
   } catch (error) {

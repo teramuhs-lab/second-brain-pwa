@@ -6,7 +6,6 @@ import type { UrlProcessResult } from '@/lib/types';
 interface LinkSummaryCardProps {
   result: UrlProcessResult;
   onDismiss: () => void;
-  onSendSlack?: () => Promise<void>;
 }
 
 // Helper to safely render items that might be strings or objects
@@ -28,11 +27,10 @@ function formatItem(item: unknown): string {
   return String(item);
 }
 
-export function LinkSummaryCard({ result, onDismiss, onSendSlack }: LinkSummaryCardProps) {
+export function LinkSummaryCard({ result, onDismiss }: LinkSummaryCardProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(['tldr', 'full_summary', 'main_ideas', 'takeaways'])
   );
-  const [isSendingSlack, setIsSendingSlack] = useState(false);
 
   const toggleSection = (section: string) => {
     setExpandedSections((prev) => {
@@ -64,16 +62,6 @@ export function LinkSummaryCard({ result, onDismiss, onSendSlack }: LinkSummaryC
       return result.url;
     }
   })();
-
-  const handleSendSlack = async () => {
-    if (!onSendSlack) return;
-    setIsSendingSlack(true);
-    try {
-      await onSendSlack();
-    } finally {
-      setIsSendingSlack(false);
-    }
-  };
 
   const getUrlTypeIcon = () => {
     switch (result.urlType) {
@@ -420,17 +408,6 @@ export function LinkSummaryCard({ result, onDismiss, onSendSlack }: LinkSummaryC
             </svg>
             Read Original
           </a>
-          {onSendSlack && (
-            <button onClick={handleSendSlack} disabled={isSendingSlack}
-              className="flex items-center gap-1.5 rounded-lg bg-[#4A154B] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#611f69] disabled:opacity-50">
-              {isSendingSlack ? <div className="spinner h-4 w-4" /> : (
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313z"/>
-                </svg>
-              )}
-              Send to Slack
-            </button>
-          )}
           <button onClick={onDismiss} className="ml-auto rounded-lg bg-[var(--bg-elevated)] px-4 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--text-secondary)]">
             Dismiss
           </button>

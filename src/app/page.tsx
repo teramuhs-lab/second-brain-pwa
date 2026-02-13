@@ -4,7 +4,7 @@ import { useState, useCallback, useRef } from 'react';
 import { CaptureInput } from '@/components/CaptureInput';
 import { ConfirmCard } from '@/components/ConfirmCard';
 import { LinkSummaryCard } from '@/components/LinkSummaryCard';
-import { captureThought, recategorize, processUrl, sendSlackNotification } from '@/lib/api';
+import { captureThought, recategorize, processUrl } from '@/lib/api';
 import type { Category, ConfirmationState, UrlProcessResult } from '@/lib/types';
 
 // Progress stages for URL processing
@@ -97,22 +97,6 @@ export default function CapturePage() {
     setUrlResult(null);
   }, []);
 
-  const handleSendSlack = useCallback(async () => {
-    if (!urlResult || urlResult.status === 'error') return;
-
-    await sendSlackNotification({
-      title: urlResult.title,
-      url: urlResult.url,
-      one_liner: urlResult.one_liner,
-      category: urlResult.category,
-      readTime: urlResult.readTime,
-      // Rich summary fields
-      tldr: urlResult.tldr,
-      key_takeaways: urlResult.key_takeaways,
-      action_items: urlResult.action_items,
-    });
-  }, [urlResult]);
-
   const handleRecategorize = useCallback(
     async (newCategory: Category | 'Ignore') => {
       if (!confirmation) return;
@@ -196,7 +180,6 @@ export default function CapturePage() {
           <LinkSummaryCard
             result={urlResult}
             onDismiss={handleUrlDismiss}
-            onSendSlack={handleSendSlack}
           />
         </div>
       )}

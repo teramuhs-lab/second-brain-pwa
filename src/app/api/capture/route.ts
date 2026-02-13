@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { DATABASE_IDS, CATEGORY_DB_IDS, DEFAULT_STATUS, TITLE_PROPERTY } from '@/config/constants';
-import { createPage } from '@/services/notion/client';
+import { createEntry, createInboxLogEntry } from '@/services/db/entries';
+import { suggestRelations, addRelation } from '@/services/db/relations';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -85,110 +85,70 @@ export async function POST(request: NextRequest) {
     const classification = await classifyText(text.trim());
     const { category, confidence, extracted_data } = classification;
 
-    const targetDbId = CATEGORY_DB_IDS[category];
-    const titleProperty = TITLE_PROPERTY[category];
-    const defaultStatus = DEFAULT_STATUS[category];
+    // Step 2: Build entry content based on category
+    const entryTitle = extracted_data.name || extracted_data.title || extracted_data.task || text.slice(0, 100);
+    const content: Record<string, unknown> = {};
 
-    // Step 2: Build properties for Notion
-    const properties: Record<string, unknown> = {
-      [titleProperty]: {
-        title: [
-          {
-            text: {
-              content:
-                extracted_data.name ||
-                extracted_data.title ||
-                extracted_data.task ||
-                text.slice(0, 100),
-            },
-          },
-        ],
-      },
-    };
-
-    // Set status/maturity based on category (Ideas uses Maturity, others use Status)
-    if (category === 'Idea') {
-      properties['Maturity'] = { select: { name: defaultStatus } };
-    } else {
-      properties['Status'] = { select: { name: defaultStatus } };
-    }
-
-    // Add category-specific properties
     if (category === 'Admin') {
-      properties['Priority'] = { select: { name: extracted_data.priority || 'Medium' } };
-      properties['Category'] = { select: { name: 'Home' } };
-      if (reminderDate) {
-        properties['Due Date'] = { date: { start: reminderDate } };
-      }
+      content.adminCategory = 'Home';
     } else if (category === 'Project') {
-      properties['Priority'] = { select: { name: 'Medium' } };
-      properties['Area'] = { select: { name: 'Work' } };
-      if (extracted_data.next_action) {
-        properties['Next Action'] = {
-          rich_text: [{ text: { content: extracted_data.next_action } }],
-        };
-      }
-      if (reminderDate) {
-        properties['Due Date'] = { date: { start: reminderDate } };
-      }
+      content.area = 'Work';
+      if (extracted_data.next_action) content.nextAction = extracted_data.next_action;
     } else if (category === 'Idea') {
-      properties['Category'] = { select: { name: 'Life' } };
-      if (extracted_data.raw_insight) {
-        properties['Raw Insight'] = {
-          rich_text: [{ text: { content: extracted_data.raw_insight } }],
-        };
-      }
+      content.ideaCategory = 'Life';
+      if (extracted_data.raw_insight) content.rawInsight = extracted_data.raw_insight;
     } else if (category === 'People') {
-      properties['Last Contact'] = {
-        date: { start: new Date().toISOString().split('T')[0] },
-      };
-      if (extracted_data.company) {
-        properties['Company'] = {
-          rich_text: [{ text: { content: extracted_data.company } }],
-        };
-      }
-      if (extracted_data.context) {
-        properties['Context'] = {
-          rich_text: [{ text: { content: extracted_data.context } }],
-        };
-      }
-      if (reminderDate) {
-        properties['Next Follow-up'] = { date: { start: reminderDate } };
-      }
+      content.lastContact = new Date().toISOString().split('T')[0];
+      if (extracted_data.company) content.company = extracted_data.company;
+      if (extracted_data.context) content.context = extracted_data.context;
     }
 
-    // Step 3: Create the Notion page
-    const newPage = await createPage(targetDbId, properties);
+    // Step 3: Create entry via dual-write service (Neon + Notion)
+    const newEntry = await createEntry({
+      category,
+      title: entryTitle,
+      priority: category === 'Admin' ? (extracted_data.priority || 'Medium') : (category === 'Project' ? 'Medium' : undefined),
+      content,
+      dueDate: reminderDate || null,
+    });
 
-    // Step 4: Log to Inbox Log
+    // Step 4: Log to Inbox Log via dual-write service
     try {
-      await createPage(DATABASE_IDS.InboxLog, {
-        'Raw Input': {
-          title: [{ text: { content: text } }],
-        },
-        Category: {
-          select: { name: category },
-        },
-        Confidence: {
-          number: confidence,
-        },
-        'Destination ID': {
-          rich_text: [{ text: { content: newPage.id } }],
-        },
-        Status: {
-          select: { name: 'Processed' },
-        },
+      await createInboxLogEntry({
+        rawInput: text,
+        category,
+        confidence,
+        destinationId: newEntry.notionId || newEntry.id,
+        status: 'Processed',
       });
     } catch (logError) {
       console.error('Failed to log to Inbox Log:', logError);
+    }
+
+    // Step 5: Auto-suggest and create relations (best-effort, non-blocking)
+    let relatedItems: Array<{ id: string; title: string; category: string; similarity: number }> = [];
+    try {
+      const suggestions = await suggestRelations(newEntry.id, { limit: 3, threshold: 0.8 });
+      for (const suggestion of suggestions) {
+        await addRelation(newEntry.id, suggestion.id, 'related_to');
+      }
+      relatedItems = suggestions.map(s => ({
+        id: s.id,
+        title: s.title,
+        category: s.category,
+        similarity: s.similarity,
+      }));
+    } catch (relError) {
+      console.error('Failed to auto-suggest relations:', relError);
     }
 
     return NextResponse.json({
       status: 'captured',
       category,
       confidence,
-      page_id: newPage.id,
+      page_id: newEntry.notionId || newEntry.id,
       reminder: reminderDate || null,
+      related: relatedItems.length > 0 ? relatedItems : undefined,
     });
   } catch (error) {
     console.error('Capture error:', error);

@@ -1,15 +1,8 @@
 import type { CaptureResponse, UpdateResponse, Category, Entry, SearchResponse, AgentResponse, DigestResponse, DailyDigestResponse, WeeklyDigestResponse, UrlProcessResult, ResearchAgentResponse } from './types';
 
-// n8n webhook base URL - configure in environment
-const N8N_BASE_URL = process.env.NEXT_PUBLIC_N8N_URL || 'https://n8n.srv1236227.hstgr.cloud';
-
-// API endpoints
+// API endpoints (all local — no external dependencies)
 const ENDPOINTS = {
-  capture: `${N8N_BASE_URL}/webhook/sb-pwa-v1`,
-  fix: `${N8N_BASE_URL}/webhook/sb-pwa-fix`,
-  update: `${N8N_BASE_URL}/webhook/sb-pwa-update`,
-  fetch: `${N8N_BASE_URL}/webhook/sb-pwa-fetch`,
-  agent: '/api/agent', // Local endpoint for better reliability
+  agent: '/api/agent',
 };
 
 // Capture a new thought (with optional reminder date)
@@ -115,7 +108,7 @@ export async function updateEntry(
   }
 }
 
-// Fetch entries by database and status
+// Fetch entries by database and status (reads from Neon via local API)
 export async function fetchEntries(
   database: string,
   status?: string
@@ -124,7 +117,7 @@ export async function fetchEntries(
     const params = new URLSearchParams({ database });
     if (status) params.append('status', status);
 
-    const response = await fetch(`${ENDPOINTS.fetch}?${params.toString()}`, {
+    const response = await fetch(`/api/entries?${params.toString()}`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });
@@ -134,7 +127,6 @@ export async function fetchEntries(
     }
 
     const data = await response.json();
-    // n8n returns { status, database, count, items }
     return data.items || [];
   } catch (error) {
     console.error('Fetch error:', error);
@@ -419,43 +411,7 @@ export function extractUrl(text: string): string | null {
   return match ? match[0] : null;
 }
 
-// Send URL summary to Slack (supports rich summary format)
-export async function sendSlackNotification(data: {
-  title: string;
-  url: string;
-  one_liner: string;
-  category: string;
-  readTime?: string;
-  // Rich summary fields (optional for backward compatibility)
-  tldr?: string;
-  key_takeaways?: string[];
-  action_items?: string[];
-  // Legacy fields
-  full_summary?: string;
-  key_points?: string[];
-}): Promise<{ status: 'sent' | 'error'; error?: string }> {
-  try {
-    const response = await fetch('/api/send-slack', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Send Slack error:', error);
-    return {
-      status: 'error',
-      error: error instanceof Error ? error.message : 'Failed to send to Slack',
-    };
-  }
-}
-
-// Save research result to Notion (Ideas or Admin)
+// Save research result (Ideas or Admin)
 export async function saveResearchResult(data: {
   question: string;
   answer: string;

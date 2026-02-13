@@ -1,46 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const NOTION_API_KEY = process.env.NOTION_API_KEY;
-
-async function archiveNotionPage(pageId: string) {
-  const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
-    method: 'PATCH',
-    headers: {
-      Authorization: `Bearer ${NOTION_API_KEY}`,
-      'Content-Type': 'application/json',
-      'Notion-Version': '2022-06-28',
-    },
-    body: JSON.stringify({ archived: true }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => null);
-    console.error(`[Delete] Notion API error (${response.status}):`, errorData);
-
-    // Provide user-friendly error messages
-    if (response.status === 404) {
-      throw new Error('Page not found. It may have already been deleted.');
-    } else if (response.status === 401) {
-      throw new Error('Notion API authentication failed. Check your API key.');
-    } else if (response.status === 403) {
-      throw new Error('Permission denied. The Notion integration may not have access to this page.');
-    } else {
-      throw new Error(errorData?.message || `Notion API error: ${response.status}`);
-    }
-  }
-
-  return response.json();
-}
+import { archiveEntry, getEntryByNotionId } from '@/services/db/entries';
 
 export async function POST(request: NextRequest) {
   try {
-    if (!NOTION_API_KEY) {
-      return NextResponse.json(
-        { status: 'error', error: 'NOTION_API_KEY not configured' },
-        { status: 500 }
-      );
-    }
-
     const body = await request.json();
     const { page_id } = body;
 
@@ -51,7 +13,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await archiveNotionPage(page_id);
+    // Find entry in Neon by Notion ID
+    const entry = await getEntryByNotionId(page_id);
+    if (!entry) {
+      return NextResponse.json(
+        { status: 'error', error: 'Entry not found in database' },
+        { status: 404 }
+      );
+    }
+
+    // Archive via dual-write service (Neon + Notion)
+    const archived = await archiveEntry(entry.id);
+    if (!archived) {
+      return NextResponse.json(
+        { status: 'error', error: 'Failed to archive entry' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       status: 'deleted',

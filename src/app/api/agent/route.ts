@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { DATABASE_IDS } from '@/config/constants';
-import { createPage } from '@/services/notion/client';
+import { createEntry } from '@/services/db/entries';
 import { agentTools } from '@/lib/agent-tools/definitions';
 import { searchBrainEntries, getItemDetailsCore } from '@/lib/agent-tools/handlers';
 import { isGoogleConnected } from '@/services/google/auth';
 import { fetchTodaysEvents, fetchTomorrowsEvents, fetchWeekEvents, createCalendarEvent, deleteCalendarEvent } from '@/services/google/calendar';
 import { searchEmails as searchGmail, getEmailDetail } from '@/services/google/gmail';
+import { eq } from 'drizzle-orm';
+import { db } from '@/db';
+import { chatSessions } from '@/db/schema';
 
-const NOTION_API_KEY = process.env.NOTION_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
-// Chat Sessions database for persistent memory
-const CHAT_SESSIONS_DB_ID = process.env.NOTION_CHAT_SESSIONS_DB_ID || '';
 
 // ============= Tool Handlers =============
 
@@ -71,24 +69,17 @@ async function createTask(
   dueDate?: string
 ): Promise<string> {
   try {
-    const properties: Record<string, unknown> = {
-      Task: { title: [{ text: { content: title } }] },
-      Status: { select: { name: 'Todo' } },
-    };
-
-    if (priority) {
-      properties.Priority = { select: { name: priority } };
-    }
-    if (dueDate) {
-      properties['Due Date'] = { date: { start: dueDate } };
-    }
-
-    const page = await createPage(DATABASE_IDS.Admin, properties);
+    const entry = await createEntry({
+      category: 'Admin',
+      title,
+      priority: priority || undefined,
+      dueDate: dueDate || undefined,
+    });
 
     return JSON.stringify({
       success: true,
       message: `Created task: "${title}"`,
-      id: page.id,
+      id: entry.notionId || entry.id,
     });
   } catch (error) {
     return JSON.stringify({
@@ -104,22 +95,23 @@ async function saveIdea(
   category?: string
 ): Promise<string> {
   try {
-    const properties: Record<string, unknown> = {
-      Title: { title: [{ text: { content: title } }] },
-      'Raw Insight': { rich_text: [{ text: { content: insight } }] },
-      Maturity: { select: { name: 'Spark' } },
+    const content: Record<string, unknown> = {
+      rawInsight: insight,
     };
-
     if (category) {
-      properties.Category = { select: { name: category } };
+      content.ideaCategory = category;
     }
 
-    const page = await createPage(DATABASE_IDS.Ideas, properties);
+    const entry = await createEntry({
+      category: 'Idea',
+      title,
+      content,
+    });
 
     return JSON.stringify({
       success: true,
       message: `Saved idea: "${title}"`,
-      id: page.id,
+      id: entry.notionId || entry.id,
     });
   } catch (error) {
     return JSON.stringify({
@@ -379,138 +371,61 @@ interface ConversationMessage {
 
 const conversationHistory = new Map<string, ConversationMessage[]>();
 
-// ============= Notion Conversation Persistence =============
+// ============= Neon Conversation Persistence =============
 
-async function loadConversationFromNotion(sessionId: string): Promise<ConversationMessage[] | null> {
-  if (!CHAT_SESSIONS_DB_ID) return null;
-
+async function loadConversationFromDB(sessionId: string): Promise<ConversationMessage[] | null> {
   try {
-    const response = await fetch(`https://api.notion.com/v1/databases/${CHAT_SESSIONS_DB_ID}/query`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${NOTION_API_KEY}`,
-        'Content-Type': 'application/json',
-        'Notion-Version': '2022-06-28',
-      },
-      body: JSON.stringify({
-        filter: { property: 'Session ID', title: { equals: sessionId } },
-        page_size: 1,
-      }),
-    });
+    const [session] = await db
+      .select()
+      .from(chatSessions)
+      .where(eq(chatSessions.sessionId, sessionId))
+      .limit(1);
 
-    if (!response.ok) return null;
+    if (!session?.messages || !Array.isArray(session.messages)) return null;
 
-    const data = await response.json();
-    if (data.results.length === 0) return null;
-
-    const page = data.results[0];
-    const messagesJson = page.properties['Messages']?.rich_text?.[0]?.plain_text;
-    if (!messagesJson) return null;
-
-    return JSON.parse(messagesJson) as ConversationMessage[];
+    return session.messages as ConversationMessage[];
   } catch (error) {
-    console.error('Error loading conversation from Notion:', error);
+    console.error('Error loading conversation from DB:', error);
     return null;
   }
 }
 
-async function saveConversationToNotion(
+async function saveConversationToDB(
   sessionId: string,
   messages: ConversationMessage[]
 ): Promise<void> {
-  if (!CHAT_SESSIONS_DB_ID) return;
-
-  const messagesToSave = messages.filter(m => m.role === 'user' || m.role === 'assistant');
-  const messagesJson = JSON.stringify(messagesToSave);
-  const truncatedJson = messagesJson.length > 1900
-    ? JSON.stringify(messagesToSave.slice(-10))
-    : messagesJson;
+  const messagesToSave = messages
+    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .slice(-20); // Keep last 20 messages
 
   try {
-    const queryResponse = await fetch(`https://api.notion.com/v1/databases/${CHAT_SESSIONS_DB_ID}/query`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${NOTION_API_KEY}`,
-        'Content-Type': 'application/json',
-        'Notion-Version': '2022-06-28',
-      },
-      body: JSON.stringify({
-        filter: { property: 'Session ID', title: { equals: sessionId } },
-        page_size: 1,
-      }),
-    });
-
-    const queryData = await queryResponse.json();
-
-    const properties = {
-      'Session ID': { title: [{ text: { content: sessionId } }] },
-      'Messages': { rich_text: [{ text: { content: truncatedJson } }] },
-      'Last Active': { date: { start: new Date().toISOString() } },
-    };
-
-    if (queryData.results?.length > 0) {
-      const pageId = queryData.results[0].id;
-      await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${NOTION_API_KEY}`,
-          'Content-Type': 'application/json',
-          'Notion-Version': '2022-06-28',
+    await db
+      .insert(chatSessions)
+      .values({
+        sessionId,
+        messages: messagesToSave,
+        lastActive: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: chatSessions.sessionId,
+        set: {
+          messages: messagesToSave,
+          lastActive: new Date(),
         },
-        body: JSON.stringify({ properties }),
       });
-    } else {
-      await fetch('https://api.notion.com/v1/pages', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${NOTION_API_KEY}`,
-          'Content-Type': 'application/json',
-          'Notion-Version': '2022-06-28',
-        },
-        body: JSON.stringify({
-          parent: { database_id: CHAT_SESSIONS_DB_ID },
-          properties,
-        }),
-      });
-    }
   } catch (error) {
-    console.error('Error saving conversation to Notion:', error);
+    console.error('Error saving conversation to DB:', error);
   }
 }
 
-async function deleteConversationFromNotion(sessionId: string): Promise<boolean> {
-  if (!CHAT_SESSIONS_DB_ID) return false;
-
+async function deleteConversationFromDB(sessionId: string): Promise<boolean> {
   try {
-    const response = await fetch(`https://api.notion.com/v1/databases/${CHAT_SESSIONS_DB_ID}/query`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${NOTION_API_KEY}`,
-        'Content-Type': 'application/json',
-        'Notion-Version': '2022-06-28',
-      },
-      body: JSON.stringify({
-        filter: { property: 'Session ID', title: { equals: sessionId } },
-        page_size: 1,
-      }),
-    });
-
-    const data = await response.json();
-    if (data.results?.length > 0) {
-      await fetch(`https://api.notion.com/v1/pages/${data.results[0].id}`, {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${NOTION_API_KEY}`,
-          'Content-Type': 'application/json',
-          'Notion-Version': '2022-06-28',
-        },
-        body: JSON.stringify({ archived: true }),
-      });
-      return true;
-    }
-    return false;
+    await db
+      .delete(chatSessions)
+      .where(eq(chatSessions.sessionId, sessionId));
+    return true;
   } catch (error) {
-    console.error('Error deleting conversation from Notion:', error);
+    console.error('Error deleting conversation from DB:', error);
     return false;
   }
 }
@@ -519,9 +434,9 @@ async function deleteConversationFromNotion(sessionId: string): Promise<boolean>
 
 export async function POST(request: NextRequest) {
   try {
-    if (!NOTION_API_KEY || !OPENAI_API_KEY) {
+    if (!OPENAI_API_KEY) {
       return NextResponse.json(
-        { status: 'error', error: 'API keys not configured' },
+        { status: 'error', error: 'OPENAI_API_KEY not configured' },
         { status: 500 }
       );
     }
@@ -539,17 +454,17 @@ export async function POST(request: NextRequest) {
     const sessionId = session_id || 'default';
     const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
-    // Load conversation - try Notion first, fall back to in-memory
+    // Load conversation - try Neon first, fall back to in-memory
     let history: ConversationMessage[];
-    let notionHistory: ConversationMessage[] | null = null;
+    let dbHistory: ConversationMessage[] | null = null;
     try {
-      notionHistory = await loadConversationFromNotion(sessionId);
-    } catch (notionError) {
-      console.error('Failed to load from Notion, using in-memory:', notionError);
+      dbHistory = await loadConversationFromDB(sessionId);
+    } catch (dbError) {
+      console.error('Failed to load from DB, using in-memory:', dbError);
     }
 
-    if (notionHistory && notionHistory.length > 0) {
-      history = [{ role: 'system', content: getSystemPrompt() }, ...notionHistory];
+    if (dbHistory && dbHistory.length > 0) {
+      history = [{ role: 'system', content: getSystemPrompt() }, ...dbHistory];
       conversationHistory.set(sessionId, history);
     } else if (!conversationHistory.has(sessionId)) {
       history = [{ role: 'system', content: getSystemPrompt() }];
@@ -631,7 +546,7 @@ export async function POST(request: NextRequest) {
         "I couldn't generate a response.";
 
       history.push({ role: 'assistant', content: finalMessage });
-      saveConversationToNotion(sessionId, history).catch(console.error);
+      saveConversationToDB(sessionId, history).catch(console.error);
 
       return NextResponse.json({
         status: 'success',
@@ -644,7 +559,7 @@ export async function POST(request: NextRequest) {
     const assistantMessage =
       responseMessage?.content || "I couldn't generate a response.";
     history.push({ role: 'assistant', content: assistantMessage });
-    saveConversationToNotion(sessionId, history).catch(console.error);
+    saveConversationToDB(sessionId, history).catch(console.error);
 
     return NextResponse.json({
       status: 'success',
@@ -681,7 +596,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     conversationHistory.delete(sessionId);
-    await deleteConversationFromNotion(sessionId);
+    await deleteConversationFromDB(sessionId);
 
     return NextResponse.json({ status: 'success', message: 'Chat cleared' });
   } catch (error) {
