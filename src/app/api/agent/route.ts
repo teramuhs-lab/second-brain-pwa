@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { DATABASE_IDS } from '@/config/constants';
+import { createPage } from '@/services/notion/client';
+import { agentTools } from '@/lib/agent-tools/definitions';
+import { searchBrainEntries, getItemDetailsCore } from '@/lib/agent-tools/handlers';
 import { isGoogleConnected } from '@/services/google/auth';
 import { fetchTodaysEvents, fetchTomorrowsEvents, fetchWeekEvents, createCalendarEvent, deleteCalendarEvent } from '@/services/google/calendar';
 import { searchEmails as searchGmail, getEmailDetail } from '@/services/google/gmail';
@@ -7,402 +11,15 @@ import { searchEmails as searchGmail, getEmailDetail } from '@/services/google/g
 const NOTION_API_KEY = process.env.NOTION_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-const DATABASE_IDS: Record<string, string> = {
-  People: '2f092129-b3db-81b4-b767-fed1e3190303',
-  Projects: '2f092129-b3db-81fd-aef1-e62b4f3445ff',
-  Ideas: '2f092129-b3db-8121-b140-f7a8f4ec2a45',
-  Admin: '2f092129-b3db-8171-ae6c-f98e8124574c',
-};
-
 // Chat Sessions database for persistent memory
-// Schema: Session ID (title), Messages (rich_text JSON), Last Active (date)
 const CHAT_SESSIONS_DB_ID = process.env.NOTION_CHAT_SESSIONS_DB_ID || '';
-
-// Map category to database key
-const CATEGORY_TO_DB: Record<string, string> = {
-  people: 'People',
-  projects: 'Projects',
-  ideas: 'Ideas',
-  admin: 'Admin',
-  tasks: 'Admin',
-};
-
-interface NotionPage {
-  id: string;
-  properties: Record<string, unknown>;
-  created_time: string;
-  last_edited_time: string;
-}
-
-// ============= Helper Functions =============
-
-function extractTitle(properties: Record<string, unknown>): string {
-  const titleProps = ['Name', 'Title', 'Task'];
-  for (const prop of titleProps) {
-    const titleProp = properties[prop] as { title?: Array<{ plain_text: string }> } | undefined;
-    if (titleProp?.title?.[0]?.plain_text) {
-      return titleProp.title[0].plain_text;
-    }
-  }
-  return 'Untitled';
-}
-
-function extractStatus(properties: Record<string, unknown>): string | undefined {
-  const statusProp = properties['Status'] as { select?: { name: string } } | undefined;
-  return statusProp?.select?.name;
-}
-
-function extractPriority(properties: Record<string, unknown>): string | undefined {
-  const priorityProp = properties['Priority'] as { select?: { name: string } } | undefined;
-  return priorityProp?.select?.name;
-}
-
-function extractDate(properties: Record<string, unknown>, field: string): string | undefined {
-  const dateProp = properties[field] as { date?: { start: string } } | undefined;
-  return dateProp?.date?.start;
-}
-
-function extractRichText(properties: Record<string, unknown>, field: string): string {
-  const prop = properties[field] as { rich_text?: Array<{ plain_text: string }> } | undefined;
-  return prop?.rich_text?.map(t => t.plain_text).join('') || '';
-}
-
-function extractAllText(properties: Record<string, unknown>): string {
-  const texts: string[] = [];
-  for (const [, value] of Object.entries(properties)) {
-    const prop = value as Record<string, unknown>;
-    if (prop.title && Array.isArray(prop.title)) {
-      texts.push((prop.title as Array<{ plain_text: string }>).map(t => t.plain_text).join(''));
-    }
-    if (prop.rich_text && Array.isArray(prop.rich_text)) {
-      texts.push((prop.rich_text as Array<{ plain_text: string }>).map(t => t.plain_text).join(''));
-    }
-    if (prop.select && typeof prop.select === 'object') {
-      const select = prop.select as { name?: string };
-      if (select.name) texts.push(select.name);
-    }
-  }
-  return texts.join(' ');
-}
-
-async function queryDatabase(databaseId: string): Promise<NotionPage[]> {
-  const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${NOTION_API_KEY}`,
-      'Content-Type': 'application/json',
-      'Notion-Version': '2022-06-28',
-    },
-    body: JSON.stringify({ page_size: 100 }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Notion API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.results as NotionPage[];
-}
-
-async function getPage(pageId: string): Promise<NotionPage> {
-  const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
-    headers: {
-      Authorization: `Bearer ${NOTION_API_KEY}`,
-      'Notion-Version': '2022-06-28',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Notion API error: ${response.status}`);
-  }
-
-  return await response.json();
-}
-
-async function createNotionPage(
-  databaseId: string,
-  properties: Record<string, unknown>
-): Promise<NotionPage> {
-  const response = await fetch('https://api.notion.com/v1/pages', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${NOTION_API_KEY}`,
-      'Content-Type': 'application/json',
-      'Notion-Version': '2022-06-28',
-    },
-    body: JSON.stringify({
-      parent: { database_id: databaseId },
-      properties,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Notion create error: ${error}`);
-  }
-
-  return await response.json();
-}
-
-// ============= Tool Definitions =============
-
-const tools: OpenAI.ChatCompletionTool[] = [
-  {
-    type: 'function',
-    function: {
-      name: 'search_brain',
-      description: 'Search the Second Brain Notion databases for items matching a topic, keyword, or name. Use for People, Projects, Ideas, and Tasks stored in Notion. Do NOT use for calendar, schedule, meetings, or email queries — use read_calendar or search_emails instead.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: 'The search term, topic, or keyword to look for',
-          },
-          categories: {
-            type: 'array',
-            items: { type: 'string', enum: ['People', 'Projects', 'Ideas', 'Admin'] },
-            description: 'Optional: limit search to specific categories. If not provided, searches all.',
-          },
-        },
-        required: ['query'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_item_details',
-      description: 'Get full details of a specific item by its ID. Use this when the user asks for more details about a specific item.',
-      parameters: {
-        type: 'object',
-        properties: {
-          item_id: {
-            type: 'string',
-            description: 'The Notion page ID of the item',
-          },
-        },
-        required: ['item_id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'create_task',
-      description: 'Create a new task in the Second Brain. Use this when the user wants to add a new task or reminder.',
-      parameters: {
-        type: 'object',
-        properties: {
-          title: {
-            type: 'string',
-            description: 'The task title/description',
-          },
-          priority: {
-            type: 'string',
-            enum: ['High', 'Medium', 'Low'],
-            description: 'Task priority level',
-          },
-          due_date: {
-            type: 'string',
-            description: 'Due date in YYYY-MM-DD format',
-          },
-        },
-        required: ['title'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'save_idea',
-      description: 'Save an insight, note, or finding as a new Idea in the Second Brain. Use this when the user wants to save something they learned.',
-      parameters: {
-        type: 'object',
-        properties: {
-          title: {
-            type: 'string',
-            description: 'A short title for the idea',
-          },
-          insight: {
-            type: 'string',
-            description: 'The full insight or note content',
-          },
-          category: {
-            type: 'string',
-            enum: ['Business', 'Tech', 'Life', 'Creative'],
-            description: 'Category for the idea',
-          },
-        },
-        required: ['title', 'insight'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'read_calendar',
-      description: 'Read calendar events. Use when user asks about schedule, meetings, or availability.',
-      parameters: {
-        type: 'object',
-        properties: {
-          period: {
-            type: 'string',
-            enum: ['today', 'tomorrow', 'this_week'],
-            description: 'Time period to fetch events for',
-          },
-        },
-        required: ['period'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'create_calendar_event',
-      description:
-        'Create a new Google Calendar event. Always check availability with read_calendar first before scheduling.',
-      parameters: {
-        type: 'object',
-        properties: {
-          summary: {
-            type: 'string',
-            description: 'Event title/name',
-          },
-          start: {
-            type: 'string',
-            description: 'Start datetime in ISO format (e.g. "2026-02-11T14:00:00")',
-          },
-          end: {
-            type: 'string',
-            description: 'End datetime in ISO format (e.g. "2026-02-11T15:00:00")',
-          },
-          description: {
-            type: 'string',
-            description: 'Event description (optional)',
-          },
-          location: {
-            type: 'string',
-            description: 'Event location (optional)',
-          },
-        },
-        required: ['summary', 'start', 'end'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'search_emails',
-      description: 'Search Gmail for emails. Use when user asks about emails, messages, or communication.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: 'Gmail search query (e.g., "from:sarah", "subject:proposal", "newer_than:3d")',
-          },
-          max_results: {
-            type: 'number',
-            description: 'Max emails to return (default 5)',
-          },
-        },
-        required: ['query'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_email',
-      description: 'Get full content of a specific email by ID. Use after search_emails when user wants to read an email.',
-      parameters: {
-        type: 'object',
-        properties: {
-          email_id: {
-            type: 'string',
-            description: 'The Gmail message ID',
-          },
-        },
-        required: ['email_id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'delete_calendar_event',
-      description: 'Delete/remove a Google Calendar event by its ID. Use read_calendar first to find the event ID. If the event includes a cal: prefix, pass both the event_id and calendar_id.',
-      parameters: {
-        type: 'object',
-        properties: {
-          event_id: {
-            type: 'string',
-            description: 'The Google Calendar event ID to delete',
-          },
-          calendar_id: {
-            type: 'string',
-            description: 'The calendar ID the event belongs to (optional, defaults to primary)',
-          },
-        },
-        required: ['event_id'],
-      },
-    },
-  },
-];
 
 // ============= Tool Handlers =============
 
-interface SearchResult {
-  id: string;
-  title: string;
-  status?: string;
-  priority?: string;
-  due_date?: string;
-  snippet: string;
-}
-
 async function searchBrain(query: string, categories?: string[]): Promise<string> {
-  const results: Record<string, SearchResult[]> = {
-    People: [],
-    Projects: [],
-    Ideas: [],
-    Admin: [],
-  };
+  const results = await searchBrainEntries(query, categories);
 
-  const queryLower = query.toLowerCase();
-  const categoriesToSearch = categories?.length
-    ? categories
-    : ['People', 'Projects', 'Ideas', 'Admin'];
-
-  for (const category of categoriesToSearch) {
-    const dbId = DATABASE_IDS[category];
-    if (!dbId) continue;
-
-    try {
-      const pages = await queryDatabase(dbId);
-      const matches = pages.filter((page) => {
-        const text = extractAllText(page.properties).toLowerCase();
-        return text.includes(queryLower);
-      });
-
-      results[category] = matches.slice(0, 5).map((page) => ({
-        id: page.id,
-        title: extractTitle(page.properties),
-        status: extractStatus(page.properties),
-        priority: extractPriority(page.properties),
-        due_date: extractDate(page.properties, 'Due Date') || extractDate(page.properties, 'Next Follow-up'),
-        snippet: extractAllText(page.properties).slice(0, 150),
-      }));
-    } catch (error) {
-      console.error(`Error searching ${category}:`, error);
-    }
-  }
-
-  // Count total results
-  const totalResults = Object.values(results).reduce((sum, arr) => sum + arr.length, 0);
-
-  if (totalResults === 0) {
+  if (results.length === 0) {
     return JSON.stringify({
       found: false,
       message: `No items found matching "${query}" in your Second Brain.`,
@@ -410,63 +27,42 @@ async function searchBrain(query: string, categories?: string[]): Promise<string
     });
   }
 
+  // Group by category for the agent's structured response
+  const grouped: Record<string, typeof results> = {};
+  for (const r of results) {
+    if (!grouped[r.category]) grouped[r.category] = [];
+    grouped[r.category].push(r);
+  }
+
   return JSON.stringify({
     found: true,
-    total: totalResults,
-    results,
+    total: results.length,
+    results: grouped,
   });
 }
 
 async function getItemDetails(itemId: string): Promise<string> {
-  try {
-    const page = await getPage(itemId);
-    const props = page.properties;
+  const details = await getItemDetailsCore(itemId);
 
-    const details: Record<string, unknown> = {
-      id: page.id,
-      title: extractTitle(props),
-      status: extractStatus(props),
-      priority: extractPriority(props),
-      created: page.created_time,
-      last_edited: page.last_edited_time,
-    };
-
-    // Add type-specific fields
-    if (props['Next Action']) {
-      details.next_action = extractRichText(props, 'Next Action');
-    }
-    if (props['Due Date']) {
-      details.due_date = extractDate(props, 'Due Date');
-    }
-    if (props['Next Follow-up']) {
-      details.next_followup = extractDate(props, 'Next Follow-up');
-    }
-    if (props['Notes']) {
-      details.notes = extractRichText(props, 'Notes');
-    }
-    if (props['Context']) {
-      details.context = extractRichText(props, 'Context');
-    }
-    if (props['Raw Insight']) {
-      details.raw_insight = extractRichText(props, 'Raw Insight');
-    }
-    if (props['One-liner']) {
-      details.one_liner = extractRichText(props, 'One-liner');
-    }
-    if (props['Company']) {
-      details.company = extractRichText(props, 'Company');
-    }
-    if (props['Role']) {
-      details.role = extractRichText(props, 'Role');
-    }
-
-    return JSON.stringify({ success: true, item: details });
-  } catch (error) {
+  if (!details) {
     return JSON.stringify({
       success: false,
       error: `Could not find item with ID: ${itemId}`,
     });
   }
+
+  return JSON.stringify({
+    success: true,
+    item: {
+      id: details.id,
+      title: details.title,
+      status: details.status,
+      priority: details.priority,
+      created: details.created,
+      last_edited: details.lastEdited,
+      ...details.fields,
+    },
+  });
 }
 
 async function createTask(
@@ -476,23 +72,18 @@ async function createTask(
 ): Promise<string> {
   try {
     const properties: Record<string, unknown> = {
-      Task: {
-        title: [{ text: { content: title } }],
-      },
-      Status: {
-        select: { name: 'Todo' },
-      },
+      Task: { title: [{ text: { content: title } }] },
+      Status: { select: { name: 'Todo' } },
     };
 
     if (priority) {
       properties.Priority = { select: { name: priority } };
     }
-
     if (dueDate) {
       properties['Due Date'] = { date: { start: dueDate } };
     }
 
-    const page = await createNotionPage(DATABASE_IDS.Admin, properties);
+    const page = await createPage(DATABASE_IDS.Admin, properties);
 
     return JSON.stringify({
       success: true,
@@ -514,22 +105,16 @@ async function saveIdea(
 ): Promise<string> {
   try {
     const properties: Record<string, unknown> = {
-      Title: {
-        title: [{ text: { content: title } }],
-      },
-      'Raw Insight': {
-        rich_text: [{ text: { content: insight } }],
-      },
-      Maturity: {
-        select: { name: 'Spark' },
-      },
+      Title: { title: [{ text: { content: title } }] },
+      'Raw Insight': { rich_text: [{ text: { content: insight } }] },
+      Maturity: { select: { name: 'Spark' } },
     };
 
     if (category) {
       properties.Category = { select: { name: category } };
     }
 
-    const page = await createNotionPage(DATABASE_IDS.Ideas, properties);
+    const page = await createPage(DATABASE_IDS.Ideas, properties);
 
     return JSON.stringify({
       success: true,
@@ -606,13 +191,7 @@ async function createCalendarEventTool(
       });
     }
 
-    const event = await createCalendarEvent({
-      summary,
-      start,
-      end,
-      description,
-      location,
-    });
+    const event = await createCalendarEvent({ summary, start, end, description, location });
 
     return JSON.stringify({
       success: true,
@@ -688,10 +267,7 @@ async function getEmailTool(emailId: string): Promise<string> {
   try {
     const connected = await isGoogleConnected();
     if (!connected) {
-      return JSON.stringify({
-        success: false,
-        error: 'Gmail is not connected.',
-      });
+      return JSON.stringify({ success: false, error: 'Gmail is not connected.' });
     }
 
     const email = await getEmailDetail(emailId);
@@ -705,7 +281,7 @@ async function getEmailTool(emailId: string): Promise<string> {
         subject: email.subject,
         from: email.from,
         date: email.date,
-        body: email.body?.slice(0, 2000), // Limit body size for token efficiency
+        body: email.body?.slice(0, 2000),
       },
     });
   } catch (error) {
@@ -722,34 +298,17 @@ async function handleToolCall(
 ): Promise<string> {
   switch (name) {
     case 'search_brain':
-      return await searchBrain(
-        args.query as string,
-        args.categories as string[] | undefined
-      );
+      return await searchBrain(args.query as string, args.categories as string[] | undefined);
     case 'get_item_details':
       return await getItemDetails(args.item_id as string);
     case 'create_task':
-      return await createTask(
-        args.title as string,
-        args.priority as string | undefined,
-        args.due_date as string | undefined
-      );
+      return await createTask(args.title as string, args.priority as string | undefined, args.due_date as string | undefined);
     case 'save_idea':
-      return await saveIdea(
-        args.title as string,
-        args.insight as string,
-        args.category as string | undefined
-      );
+      return await saveIdea(args.title as string, args.insight as string, args.category as string | undefined);
     case 'read_calendar':
       return await readCalendar(args.period as string);
     case 'create_calendar_event':
-      return await createCalendarEventTool(
-        args.summary as string,
-        args.start as string,
-        args.end as string,
-        args.description as string | undefined,
-        args.location as string | undefined
-      );
+      return await createCalendarEventTool(args.summary as string, args.start as string, args.end as string, args.description as string | undefined, args.location as string | undefined);
     case 'search_emails':
       return await searchEmailsTool(args.query as string, args.max_results as number | undefined);
     case 'get_email':
@@ -818,23 +377,14 @@ interface ConversationMessage {
   tool_calls?: OpenAI.ChatCompletionMessageToolCall[];
 }
 
-// In-memory cache (fallback if no Notion DB configured)
 const conversationHistory = new Map<string, ConversationMessage[]>();
 
 // ============= Notion Conversation Persistence =============
-
-interface ChatSession {
-  pageId: string;
-  sessionId: string;
-  messages: ConversationMessage[];
-  lastActive: string;
-}
 
 async function loadConversationFromNotion(sessionId: string): Promise<ConversationMessage[] | null> {
   if (!CHAT_SESSIONS_DB_ID) return null;
 
   try {
-    // Query for existing session
     const response = await fetch(`https://api.notion.com/v1/databases/${CHAT_SESSIONS_DB_ID}/query`, {
       method: 'POST',
       headers: {
@@ -843,10 +393,7 @@ async function loadConversationFromNotion(sessionId: string): Promise<Conversati
         'Notion-Version': '2022-06-28',
       },
       body: JSON.stringify({
-        filter: {
-          property: 'Session ID',
-          title: { equals: sessionId },
-        },
+        filter: { property: 'Session ID', title: { equals: sessionId } },
         page_size: 1,
       }),
     });
@@ -858,7 +405,6 @@ async function loadConversationFromNotion(sessionId: string): Promise<Conversati
 
     const page = data.results[0];
     const messagesJson = page.properties['Messages']?.rich_text?.[0]?.plain_text;
-
     if (!messagesJson) return null;
 
     return JSON.parse(messagesJson) as ConversationMessage[];
@@ -874,17 +420,13 @@ async function saveConversationToNotion(
 ): Promise<void> {
   if (!CHAT_SESSIONS_DB_ID) return;
 
-  // Only save user and assistant messages (skip system and tool for storage efficiency)
   const messagesToSave = messages.filter(m => m.role === 'user' || m.role === 'assistant');
   const messagesJson = JSON.stringify(messagesToSave);
-
-  // Notion rich_text limit is 2000 chars, so we truncate older messages if needed
   const truncatedJson = messagesJson.length > 1900
     ? JSON.stringify(messagesToSave.slice(-10))
     : messagesJson;
 
   try {
-    // Check if session exists
     const queryResponse = await fetch(`https://api.notion.com/v1/databases/${CHAT_SESSIONS_DB_ID}/query`, {
       method: 'POST',
       headers: {
@@ -893,10 +435,7 @@ async function saveConversationToNotion(
         'Notion-Version': '2022-06-28',
       },
       body: JSON.stringify({
-        filter: {
-          property: 'Session ID',
-          title: { equals: sessionId },
-        },
+        filter: { property: 'Session ID', title: { equals: sessionId } },
         page_size: 1,
       }),
     });
@@ -910,7 +449,6 @@ async function saveConversationToNotion(
     };
 
     if (queryData.results?.length > 0) {
-      // Update existing session
       const pageId = queryData.results[0].id;
       await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
         method: 'PATCH',
@@ -922,7 +460,6 @@ async function saveConversationToNotion(
         body: JSON.stringify({ properties }),
       });
     } else {
-      // Create new session
       await fetch('https://api.notion.com/v1/pages', {
         method: 'POST',
         headers: {
@@ -945,7 +482,6 @@ async function deleteConversationFromNotion(sessionId: string): Promise<boolean>
   if (!CHAT_SESSIONS_DB_ID) return false;
 
   try {
-    // Find the session
     const response = await fetch(`https://api.notion.com/v1/databases/${CHAT_SESSIONS_DB_ID}/query`, {
       method: 'POST',
       headers: {
@@ -954,17 +490,13 @@ async function deleteConversationFromNotion(sessionId: string): Promise<boolean>
         'Notion-Version': '2022-06-28',
       },
       body: JSON.stringify({
-        filter: {
-          property: 'Session ID',
-          title: { equals: sessionId },
-        },
+        filter: { property: 'Session ID', title: { equals: sessionId } },
         page_size: 1,
       }),
     });
 
     const data = await response.json();
     if (data.results?.length > 0) {
-      // Archive the page
       await fetch(`https://api.notion.com/v1/pages/${data.results[0].id}`, {
         method: 'PATCH',
         headers: {
@@ -1017,18 +549,15 @@ export async function POST(request: NextRequest) {
     }
 
     if (notionHistory && notionHistory.length > 0) {
-      // Restore from Notion (add system prompt at start)
       history = [{ role: 'system', content: getSystemPrompt() }, ...notionHistory];
       conversationHistory.set(sessionId, history);
     } else if (!conversationHistory.has(sessionId)) {
-      // New session
       history = [{ role: 'system', content: getSystemPrompt() }];
       conversationHistory.set(sessionId, history);
     } else {
       history = conversationHistory.get(sessionId)!;
     }
 
-    // Add user message
     history.push({ role: 'user', content: message });
 
     // Keep history manageable (last 15 messages + system)
@@ -1044,7 +573,7 @@ export async function POST(request: NextRequest) {
       temperature: 0.7,
       max_tokens: 800,
       messages: recentMessages as OpenAI.ChatCompletionMessageParam[],
-      tools: tools,
+      tools: agentTools,
       tool_choice: 'auto',
     });
 
@@ -1053,19 +582,14 @@ export async function POST(request: NextRequest) {
 
     // Handle tool calls if present
     if (responseMessage?.tool_calls && responseMessage.tool_calls.length > 0) {
-      // Add assistant's tool call message to history
       history.push({
         role: 'assistant',
         content: responseMessage.content || '',
         tool_calls: responseMessage.tool_calls,
       });
 
-      // Execute each tool call
       for (const toolCall of responseMessage.tool_calls) {
-        // Handle different tool call types
-        if (toolCall.type !== 'function' || !('function' in toolCall)) {
-          continue;
-        }
+        if (toolCall.type !== 'function' || !('function' in toolCall)) continue;
 
         const funcCall = toolCall as { id: string; type: 'function'; function: { name: string; arguments: string } };
         const toolName = funcCall.function.name;
@@ -1075,13 +599,12 @@ export async function POST(request: NextRequest) {
           const args = JSON.parse(funcCall.function.arguments);
           const result = await handleToolCall(toolName, args);
 
-          // Add tool result to history
           history.push({
             role: 'tool',
             content: result,
             tool_call_id: funcCall.id,
           });
-        } catch (error) {
+        } catch {
           history.push({
             role: 'tool',
             content: JSON.stringify({ error: 'Tool execution failed' }),
@@ -1107,10 +630,7 @@ export async function POST(request: NextRequest) {
         finalCompletion.choices[0]?.message?.content ||
         "I couldn't generate a response.";
 
-      // Store final response
       history.push({ role: 'assistant', content: finalMessage });
-
-      // Save to Notion (async, don't block response)
       saveConversationToNotion(sessionId, history).catch(console.error);
 
       return NextResponse.json({
@@ -1124,8 +644,6 @@ export async function POST(request: NextRequest) {
     const assistantMessage =
       responseMessage?.content || "I couldn't generate a response.";
     history.push({ role: 'assistant', content: assistantMessage });
-
-    // Save to Notion (async, don't block response)
     saveConversationToNotion(sessionId, history).catch(console.error);
 
     return NextResponse.json({
@@ -1135,7 +653,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Agent error:', error);
-    // Return detailed error for debugging
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     const errorStack = error instanceof Error ? error.stack : undefined;
     console.error('Full error details:', { message: errorMessage, stack: errorStack });
@@ -1163,10 +680,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Clear in-memory
     conversationHistory.delete(sessionId);
-
-    // Clear from Notion
     await deleteConversationFromNotion(sessionId);
 
     return NextResponse.json({ status: 'success', message: 'Chat cleared' });

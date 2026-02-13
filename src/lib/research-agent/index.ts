@@ -4,7 +4,9 @@
 import OpenAI from 'openai';
 import { CitationTracker, Citation } from './citations';
 import { detectDomainHybrid, getResearchSystemPrompt, ExpertDomain, classifyQueryIntent, CASUAL_SYSTEM_PROMPT, FOLLOW_UP_SYSTEM_PROMPT } from './personas';
-import { searchWeb, formatWebResultsForContext, isWebSearchAvailable, SearchFocus } from './web-search';
+import { searchWeb, isWebSearchAvailable, SearchFocus } from './web-search';
+import { researchAgentTools } from '@/lib/agent-tools/definitions';
+import { searchBrainEntries, getItemDetailsCore } from '@/lib/agent-tools/handlers';
 import { isGoogleConnected } from '@/services/google/auth';
 import { fetchTodaysEvents, fetchTomorrowsEvents, fetchWeekEvents, createCalendarEvent, deleteCalendarEvent } from '@/services/google/calendar';
 import { searchEmails as searchGmail, getEmailDetail } from '@/services/google/gmail';
@@ -30,351 +32,38 @@ export interface ResearchResponse {
   error?: string;
 }
 
-export interface NotionSearchResult {
-  id: string;
-  title: string;
-  category: string;
-  snippet: string;
-  status?: string;
-  priority?: string;
-}
-
 // ============= Constants =============
 
 const MAX_RESEARCH_ITERATIONS = 5;
 const RESEARCH_MODEL = process.env.RESEARCH_AGENT_MODEL || 'gpt-4o';
 
-// Database IDs from main config
-const DATABASE_IDS: Record<string, string> = {
-  People: '2f092129-b3db-81b4-b767-fed1e3190303',
-  Projects: '2f092129-b3db-81fd-aef1-e62b4f3445ff',
-  Ideas: '2f092129-b3db-8121-b140-f7a8f4ec2a45',
-  Admin: '2f092129-b3db-8171-ae6c-f98e8124574c',
-};
-
-// ============= Tool Definitions =============
-
-const researchTools: OpenAI.ChatCompletionTool[] = [
-  {
-    type: 'function',
-    function: {
-      name: 'search_brain',
-      description: `Search the user's Second Brain (Notion databases) for items matching a topic.
-Use for People, Projects, Ideas, and Tasks stored in Notion.
-Do NOT use for calendar, schedule, meetings, or email queries — use read_calendar or search_emails instead.`,
-      parameters: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: 'Search term, topic, or keyword to look for',
-          },
-          categories: {
-            type: 'array',
-            items: { type: 'string', enum: ['People', 'Projects', 'Ideas', 'Admin'] },
-            description: 'Limit search to specific categories. Omit to search all.',
-          },
-        },
-        required: ['query'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'search_web',
-      description: `Search the web for external information.
-Use this when:
-- Second Brain lacks relevant info
-- Question requires current/external knowledge
-- Need to verify or expand on brain results`,
-      parameters: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: 'Web search query',
-          },
-          focus: {
-            type: 'string',
-            enum: ['general', 'news', 'technical', 'research'],
-            description: 'Type of search - affects query optimization',
-          },
-        },
-        required: ['query'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_item_details',
-      description: 'Get full details of a specific Notion item by ID. Use when you need more context about a search result.',
-      parameters: {
-        type: 'object',
-        properties: {
-          item_id: {
-            type: 'string',
-            description: 'The Notion page ID',
-          },
-        },
-        required: ['item_id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'finalize_research',
-      description: `Call this when you have gathered enough information to answer the question.
-ALWAYS call this before providing your final answer.`,
-      parameters: {
-        type: 'object',
-        properties: {
-          summary: {
-            type: 'string',
-            description: 'Brief summary of what you found',
-          },
-          ready_to_answer: {
-            type: 'boolean',
-            description: 'True if you have enough info, false if you need more research',
-          },
-          missing_info: {
-            type: 'string',
-            description: 'What additional info is needed (if ready_to_answer is false)',
-          },
-        },
-        required: ['summary', 'ready_to_answer'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'read_calendar',
-      description: `Read Google Calendar events. Use when user asks about schedule, meetings, availability, or "what's on my calendar".`,
-      parameters: {
-        type: 'object',
-        properties: {
-          period: {
-            type: 'string',
-            enum: ['today', 'tomorrow', 'this_week'],
-            description: 'Time period to fetch events for',
-          },
-        },
-        required: ['period'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'create_calendar_event',
-      description: 'Create a new Google Calendar event. Always check availability with read_calendar first.',
-      parameters: {
-        type: 'object',
-        properties: {
-          summary: { type: 'string', description: 'Event title/name' },
-          start: { type: 'string', description: 'Start datetime in ISO format (e.g. "2026-02-11T14:00:00")' },
-          end: { type: 'string', description: 'End datetime in ISO format (e.g. "2026-02-11T15:00:00")' },
-          description: { type: 'string', description: 'Event description (optional)' },
-          location: { type: 'string', description: 'Event location (optional)' },
-        },
-        required: ['summary', 'start', 'end'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'search_emails',
-      description: 'Search Gmail for emails. Use when user asks about emails, messages, or communication.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'Gmail search query (e.g., "from:sarah", "subject:proposal")' },
-          max_results: { type: 'number', description: 'Max emails to return (default 5)' },
-        },
-        required: ['query'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_email',
-      description: 'Get full content of a specific email by ID. Use after search_emails.',
-      parameters: {
-        type: 'object',
-        properties: {
-          email_id: { type: 'string', description: 'The Gmail message ID' },
-        },
-        required: ['email_id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'delete_calendar_event',
-      description: 'Delete/remove a Google Calendar event by its ID. Use read_calendar first to find the event ID. If the event includes a cal: prefix (e.g. [id:abc|cal:xyz]), pass both the event_id and calendar_id.',
-      parameters: {
-        type: 'object',
-        properties: {
-          event_id: { type: 'string', description: 'The Google Calendar event ID to delete' },
-          calendar_id: { type: 'string', description: 'The calendar ID the event belongs to (optional, defaults to primary)' },
-        },
-        required: ['event_id'],
-      },
-    },
-  },
-];
-
-// ============= Notion Helpers =============
-
-async function queryNotionDatabase(databaseId: string): Promise<NotionSearchResult[]> {
-  const NOTION_API_KEY = process.env.NOTION_API_KEY;
-  if (!NOTION_API_KEY) return [];
-
-  try {
-    const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${NOTION_API_KEY}`,
-        'Content-Type': 'application/json',
-        'Notion-Version': '2022-06-28',
-      },
-      body: JSON.stringify({ page_size: 100 }),
-    });
-
-    if (!response.ok) return [];
-
-    const data = await response.json();
-    return data.results.map((page: Record<string, unknown>) => {
-      const props = page.properties as Record<string, unknown>;
-      return {
-        id: page.id as string,
-        title: extractTitle(props),
-        category: getCategoryFromDbId(databaseId),
-        snippet: extractAllText(props).slice(0, 200),
-        status: extractSelect(props, 'Status'),
-        priority: extractSelect(props, 'Priority'),
-      };
-    });
-  } catch (error) {
-    console.error('Notion query error:', error);
-    return [];
-  }
-}
-
-async function getNotionPage(pageId: string): Promise<Record<string, unknown> | null> {
-  const NOTION_API_KEY = process.env.NOTION_API_KEY;
-  if (!NOTION_API_KEY) return null;
-
-  try {
-    const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
-      headers: {
-        Authorization: `Bearer ${NOTION_API_KEY}`,
-        'Notion-Version': '2022-06-28',
-      },
-    });
-
-    if (!response.ok) return null;
-    return await response.json();
-  } catch (error) {
-    console.error('Notion page fetch error:', error);
-    return null;
-  }
-}
-
-function extractTitle(properties: Record<string, unknown>): string {
-  const titleProps = ['Name', 'Title', 'Task'];
-  for (const prop of titleProps) {
-    const titleProp = properties[prop] as { title?: Array<{ plain_text: string }> } | undefined;
-    if (titleProp?.title?.[0]?.plain_text) {
-      return titleProp.title[0].plain_text;
-    }
-  }
-  return 'Untitled';
-}
-
-function extractSelect(properties: Record<string, unknown>, field: string): string | undefined {
-  const prop = properties[field] as { select?: { name: string } } | undefined;
-  return prop?.select?.name;
-}
-
-function extractRichText(properties: Record<string, unknown>, field: string): string {
-  const prop = properties[field] as { rich_text?: Array<{ plain_text: string }> } | undefined;
-  return prop?.rich_text?.map(t => t.plain_text).join('') || '';
-}
-
-function extractAllText(properties: Record<string, unknown>): string {
-  const texts: string[] = [];
-  for (const [, value] of Object.entries(properties)) {
-    const prop = value as Record<string, unknown>;
-    if (prop.title && Array.isArray(prop.title)) {
-      texts.push((prop.title as Array<{ plain_text: string }>).map(t => t.plain_text).join(''));
-    }
-    if (prop.rich_text && Array.isArray(prop.rich_text)) {
-      texts.push((prop.rich_text as Array<{ plain_text: string }>).map(t => t.plain_text).join(''));
-    }
-    if (prop.select && typeof prop.select === 'object') {
-      const select = prop.select as { name?: string };
-      if (select.name) texts.push(select.name);
-    }
-  }
-  return texts.join(' ');
-}
-
-function getCategoryFromDbId(dbId: string): string {
-  for (const [category, id] of Object.entries(DATABASE_IDS)) {
-    if (id === dbId) return category;
-  }
-  return 'Unknown';
-}
-
 // ============= Tool Handlers =============
+
+type ToolResult = { result: string; citations: Omit<Citation, 'number'>[] };
 
 async function handleSearchBrain(
   query: string,
   categories?: string[],
   citationTracker?: CitationTracker
-): Promise<{ result: string; citations: Omit<Citation, 'number'>[] }> {
-  const queryLower = query.toLowerCase();
-  const categoriesToSearch = categories?.length ? categories : ['People', 'Projects', 'Ideas', 'Admin'];
-  const allResults: NotionSearchResult[] = [];
+): Promise<ToolResult> {
+  const results = await searchBrainEntries(query, categories);
   const citations: Omit<Citation, 'number'>[] = [];
 
-  for (const category of categoriesToSearch) {
-    const dbId = DATABASE_IDS[category];
-    if (!dbId) continue;
+  if (results.length === 0) {
+    return { result: `No results found for "${query}" in Second Brain.`, citations: [] };
+  }
 
-    const pages = await queryNotionDatabase(dbId);
-    const matches = pages.filter(p => {
-      const text = `${p.title} ${p.snippet}`.toLowerCase();
-      return text.includes(queryLower);
+  for (const match of results) {
+    citations.push({
+      type: 'notion',
+      id: match.id,
+      title: match.title,
+      snippet: match.snippet,
+      database: match.category,
     });
-
-    for (const match of matches.slice(0, 5)) {
-      allResults.push(match);
-      citations.push({
-        type: 'notion',
-        id: match.id,
-        title: match.title,
-        snippet: match.snippet,
-        database: category,
-      });
-    }
   }
 
-  if (allResults.length === 0) {
-    return {
-      result: `No results found for "${query}" in Second Brain.`,
-      citations: [],
-    };
-  }
-
-  const resultText = allResults
+  const resultText = results
     .map((r, i) => {
       const marker = citationTracker ? citationTracker.add(citations[i]) : `[${i + 1}]`;
       return `${marker} ${r.title} (${r.category})${r.status ? ` - ${r.status}` : ''}\n   ${r.snippet.slice(0, 100)}...`;
@@ -382,7 +71,7 @@ async function handleSearchBrain(
     .join('\n\n');
 
   return {
-    result: `Found ${allResults.length} results in Second Brain:\n\n${resultText}`,
+    result: `Found ${results.length} results in Second Brain:\n\n${resultText}`,
     citations,
   };
 }
@@ -391,21 +80,15 @@ async function handleSearchWeb(
   query: string,
   focus?: SearchFocus,
   citationTracker?: CitationTracker
-): Promise<{ result: string; citations: Omit<Citation, 'number'>[] }> {
+): Promise<ToolResult> {
   if (!isWebSearchAvailable()) {
-    return {
-      result: 'Web search is not configured. Only Second Brain search is available.',
-      citations: [],
-    };
+    return { result: 'Web search is not configured. Only Second Brain search is available.', citations: [] };
   }
 
   const { success, results, citations, error } = await searchWeb(query, { maxResults: 5 });
 
   if (!success || results.length === 0) {
-    return {
-      result: error || `No web results found for "${query}".`,
-      citations: [],
-    };
+    return { result: error || `No web results found for "${query}".`, citations: [] };
   }
 
   const resultText = results
@@ -424,51 +107,37 @@ async function handleSearchWeb(
 async function handleGetItemDetails(
   itemId: string,
   citationTracker?: CitationTracker
-): Promise<{ result: string; citations: Omit<Citation, 'number'>[] }> {
-  const page = await getNotionPage(itemId);
+): Promise<ToolResult> {
+  const details = await getItemDetailsCore(itemId);
 
-  if (!page) {
-    return {
-      result: `Could not find item with ID: ${itemId}`,
-      citations: [],
-    };
+  if (!details) {
+    return { result: `Could not find item with ID: ${itemId}`, citations: [] };
   }
 
-  const props = page.properties as Record<string, unknown>;
-  const title = extractTitle(props);
-
-  const details: string[] = [`Title: ${title}`];
-
-  // Extract all relevant fields
-  const fields = ['Status', 'Priority', 'Company', 'Role', 'Context', 'Notes', 'Next Action', 'Raw Insight', 'One-liner'];
-  for (const field of fields) {
-    const value = extractRichText(props, field) || extractSelect(props, field);
-    if (value) {
-      details.push(`${field}: ${value}`);
-    }
+  const lines: string[] = [`Title: ${details.title}`];
+  if (details.status) lines.push(`Status: ${details.status}`);
+  if (details.priority) lines.push(`Priority: ${details.priority}`);
+  for (const [field, value] of Object.entries(details.fields)) {
+    lines.push(`${field}: ${value}`);
   }
 
   const citation: Omit<Citation, 'number'> = {
     type: 'notion',
     id: itemId,
-    title,
-    snippet: details.join('; ').slice(0, 200),
+    title: details.title,
+    snippet: lines.join('; ').slice(0, 200),
   };
 
   if (citationTracker) {
     citationTracker.add(citation);
   }
 
-  return {
-    result: details.join('\n'),
-    citations: [citation],
-  };
+  return { result: lines.join('\n'), citations: [citation] };
 }
 
 // ============= Google Calendar & Email Handlers =============
 
 function formatMeetingLocation(event: { location?: string; hangoutLink?: string; conferenceData?: { entryPoints?: Array<{ entryPointType: string; uri: string; label?: string }> } }): string {
-  // Prefer conferenceData for reliable meeting detection
   if (event.conferenceData?.entryPoints?.length) {
     const video = event.conferenceData.entryPoints.find(ep => ep.entryPointType === 'video');
     if (video) {
@@ -480,18 +149,15 @@ function formatMeetingLocation(event: { location?: string; hangoutLink?: string;
   }
   if (event.hangoutLink) return 'Google Meet';
 
-  // Fall back to parsing location field
   if (!event.location) return '';
   if (/teams\.microsoft\.com/i.test(event.location)) return 'Teams Meeting';
   if (/zoom\.us/i.test(event.location)) return 'Zoom Meeting';
   if (/meet\.google\.com/i.test(event.location)) return 'Google Meet';
   if (/^https?:\/\//i.test(event.location)) return 'Online Meeting';
-  return event.location; // Physical location — keep as-is
+  return event.location;
 }
 
-async function handleReadCalendar(
-  period: string
-): Promise<{ result: string; citations: Omit<Citation, 'number'>[] }> {
+async function handleReadCalendar(period: string): Promise<ToolResult> {
   try {
     const connected = await isGoogleConnected();
     if (!connected) {
@@ -526,7 +192,6 @@ async function handleReadCalendar(
         ? new Date(e.end.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
         : '';
 
-      // Calculate duration for timed events
       let duration = '';
       if (e.start.dateTime && e.end.dateTime) {
         const mins = (new Date(e.end.dateTime).getTime() - new Date(e.start.dateTime).getTime()) / 60000;
@@ -540,10 +205,7 @@ async function handleReadCalendar(
       return `- **${time}${endTime ? ` – ${endTime}` : ''}** · ${e.summary}${duration ? ` (${duration})` : ''}${location ? ` · ${location}` : ''}${e.calendarName && e.calendarId !== 'primary' ? ` · _${e.calendarName}_` : ''} [id:${e.id}${e.calendarId && e.calendarId !== 'primary' ? `|cal:${e.calendarId}` : ''}]`;
     }).join('\n');
 
-    return {
-      result: `Calendar events ${label} (${events.length}):\n\n${eventList}`,
-      citations: [],
-    };
+    return { result: `Calendar events ${label} (${events.length}):\n\n${eventList}`, citations: [] };
   } catch (error) {
     return { result: `Failed to fetch calendar: ${error instanceof Error ? error.message : 'Unknown error'}`, citations: [] };
   }
@@ -551,7 +213,7 @@ async function handleReadCalendar(
 
 async function handleCreateCalendarEvent(
   summary: string, start: string, end: string, description?: string, location?: string
-): Promise<{ result: string; citations: Omit<Citation, 'number'>[] }> {
+): Promise<ToolResult> {
   try {
     const connected = await isGoogleConnected();
     if (!connected) {
@@ -568,10 +230,7 @@ async function handleCreateCalendarEvent(
   }
 }
 
-async function handleDeleteCalendarEvent(
-  eventId: string,
-  calendarId?: string
-): Promise<{ result: string; citations: Omit<Citation, 'number'>[] }> {
+async function handleDeleteCalendarEvent(eventId: string, calendarId?: string): Promise<ToolResult> {
   try {
     const connected = await isGoogleConnected();
     if (!connected) {
@@ -579,18 +238,13 @@ async function handleDeleteCalendarEvent(
     }
 
     await deleteCalendarEvent(eventId, calendarId || 'primary');
-    return {
-      result: `Successfully deleted calendar event (ID: ${eventId}).`,
-      citations: [],
-    };
+    return { result: `Successfully deleted calendar event (ID: ${eventId}).`, citations: [] };
   } catch (error) {
     return { result: `Failed to delete event: ${error instanceof Error ? error.message : 'Unknown error'}`, citations: [] };
   }
 }
 
-async function handleSearchEmails(
-  query: string, maxResults?: number
-): Promise<{ result: string; citations: Omit<Citation, 'number'>[] }> {
+async function handleSearchEmails(query: string, maxResults?: number): Promise<ToolResult> {
   try {
     const connected = await isGoogleConnected();
     if (!connected) {
@@ -606,18 +260,13 @@ async function handleSearchEmails(
       `- [${e.id}] "${e.subject}" from ${e.from} (${e.date})\n  ${e.snippet}`
     ).join('\n\n');
 
-    return {
-      result: `Found ${emails.length} emails:\n\n${emailList}`,
-      citations: [],
-    };
+    return { result: `Found ${emails.length} emails:\n\n${emailList}`, citations: [] };
   } catch (error) {
     return { result: `Failed to search emails: ${error instanceof Error ? error.message : 'Unknown error'}`, citations: [] };
   }
 }
 
-async function handleGetEmail(
-  emailId: string
-): Promise<{ result: string; citations: Omit<Citation, 'number'>[] }> {
+async function handleGetEmail(emailId: string): Promise<ToolResult> {
   try {
     const connected = await isGoogleConnected();
     if (!connected) {
@@ -678,7 +327,6 @@ export async function runResearchLoop(
 
   // Handle follow-up questions naturally (no research loop)
   if (queryIntent === 'follow_up') {
-    // Use recent history for context (last 6 messages to stay focused)
     const recentHistory = conversationHistory.slice(-6);
 
     const followUpResponse = await openai.chat.completions.create({
@@ -698,9 +346,9 @@ export async function runResearchLoop(
     return {
       status: 'success',
       answer: followUpResponse.choices[0]?.message?.content || "Could you clarify what you'd like me to expand on?",
-      citations: [], // Follow-ups don't add new citations
+      citations: [],
       researchSteps: [],
-      expertDomain: 'personal' as ExpertDomain, // Keep it conversational
+      expertDomain: 'personal' as ExpertDomain,
       tools_used: [],
       iterations: 0,
     };
@@ -731,21 +379,18 @@ export async function runResearchLoop(
   while (iteration < MAX_RESEARCH_ITERATIONS && !isComplete) {
     iteration++;
 
-    // Call AI to decide next action
     const completion = await openai.chat.completions.create({
       model: RESEARCH_MODEL,
-      temperature: 0.3, // Lower temp for more consistent research
+      temperature: 0.3,
       max_tokens: 1500,
       messages,
-      tools: researchTools,
-      tool_choice: iteration === 1 ? 'required' : 'auto', // Force tool use on first iteration
+      tools: researchAgentTools,
+      tool_choice: iteration === 1 ? 'required' : 'auto',
     });
 
     const responseMessage = completion.choices[0]?.message;
 
-    // If no tool calls, we're done
     if (!responseMessage?.tool_calls || responseMessage.tool_calls.length === 0) {
-      // Final answer
       const finalAnswer = responseMessage?.content || '';
 
       return {
@@ -774,7 +419,7 @@ export async function runResearchLoop(
         toolArgs: args,
       });
 
-      let toolResult: { result: string; citations: Omit<Citation, 'number'>[] };
+      let toolResult: ToolResult;
 
       switch (toolName) {
         case 'search_brain':
@@ -787,9 +432,7 @@ export async function runResearchLoop(
           toolResult = await handleGetItemDetails(args.item_id, citationTracker);
           break;
         case 'finalize_research':
-          if (args.ready_to_answer) {
-            isComplete = true;
-          }
+          if (args.ready_to_answer) isComplete = true;
           toolResult = {
             result: `Research summary: ${args.summary}. Ready to answer: ${args.ready_to_answer}`,
             citations: [],
@@ -820,7 +463,6 @@ export async function runResearchLoop(
         sources: toolResult.citations.map((c, i) => ({ ...c, number: i + 1 })),
       });
 
-      // Add tool response to messages
       messages.push({
         role: 'assistant',
         content: null,
@@ -835,7 +477,7 @@ export async function runResearchLoop(
     }
   }
 
-  // Max iterations reached - generate final answer with what we have
+  // Max iterations reached - generate final answer
   messages.push({
     role: 'user',
     content: 'Based on all the research gathered, please provide your comprehensive answer now. Remember to cite your sources using [1], [2], etc.',

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { markDone, deleteEntry, snoozeEntry } from '@/lib/api';
 import { useToast } from '@/components/Toast';
+import { CATEGORY_ICONS, CATEGORY_GRADIENTS } from '@/config/ui';
 
 interface ReviewItem {
   id: string;
@@ -14,19 +15,6 @@ interface ReviewItem {
   source?: string;
 }
 
-const CATEGORY_ICONS: Record<string, string> = {
-  People: '👤',
-  Projects: '🚀',
-  Ideas: '💡',
-  Admin: '📋',
-};
-
-const CATEGORY_COLORS: Record<string, string> = {
-  People: 'from-blue-500 to-cyan-500',
-  Projects: 'from-green-500 to-emerald-500',
-  Ideas: 'from-purple-500 to-pink-500',
-  Admin: 'from-orange-500 to-amber-500',
-};
 
 const CATEGORY_TO_DB: Record<string, string> = {
   People: 'people',
@@ -284,7 +272,7 @@ export default function ReviewPage() {
       >
         {/* Category badge */}
         <div className="flex items-center gap-2 mb-4">
-          <div className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${CATEGORY_COLORS[currentItem.category] || 'from-gray-500 to-gray-600'}`}>
+          <div className={`flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${CATEGORY_GRADIENTS[currentItem.category] || 'from-gray-500 to-gray-600'}`}>
             <span className="text-lg">{CATEGORY_ICONS[currentItem.category] || '📄'}</span>
           </div>
           <div>

@@ -1,34 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { DATABASE_IDS, CATEGORY_DB_IDS, DEFAULT_STATUS, TITLE_PROPERTY } from '@/config/constants';
+import { createPage } from '@/services/notion/client';
 
-// Notion database IDs
-const DATABASE_IDS: Record<string, string> = {
-  People: '2f092129-b3db-81b4-b767-fed1e3190303',
-  Project: '2f092129-b3db-81fd-aef1-e62b4f3445ff',
-  Idea: '2f092129-b3db-8121-b140-f7a8f4ec2a45',
-  Admin: '2f092129-b3db-8171-ae6c-f98e8124574c',
-};
-
-// Inbox Log database ID
-const INBOX_LOG_DB_ID = '2f092129-b3db-8104-a9ca-fc123e5be4a3';
-
-// Default status for each category
-const DEFAULT_STATUS: Record<string, string> = {
-  People: 'New',
-  Project: 'Active',
-  Idea: 'Spark',
-  Admin: 'Todo',
-};
-
-// Title property name for each category
-const TITLE_PROPERTY: Record<string, string> = {
-  People: 'Name',
-  Project: 'Name',
-  Idea: 'Title',
-  Admin: 'Task',
-};
-
-const NOTION_API_KEY = process.env.NOTION_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 interface ClassificationResult {
@@ -87,34 +61,8 @@ For Admin: {"task": "TaskDescription", "priority": "Medium"}`,
   }
 }
 
-async function notionRequest(endpoint: string, method: string, body?: object) {
-  const response = await fetch(`https://api.notion.com/v1${endpoint}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${NOTION_API_KEY}`,
-      'Content-Type': 'application/json',
-      'Notion-Version': '2022-06-28',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Notion API error: ${response.status} - ${error}`);
-  }
-
-  return response.json();
-}
-
 export async function POST(request: NextRequest) {
   try {
-    // Check for required API keys
-    if (!NOTION_API_KEY) {
-      return NextResponse.json(
-        { status: 'error', error: 'NOTION_API_KEY not configured' },
-        { status: 500 }
-      );
-    }
     if (!OPENAI_API_KEY) {
       return NextResponse.json(
         { status: 'error', error: 'OPENAI_API_KEY not configured' },
@@ -137,7 +85,7 @@ export async function POST(request: NextRequest) {
     const classification = await classifyText(text.trim());
     const { category, confidence, extracted_data } = classification;
 
-    const targetDbId = DATABASE_IDS[category];
+    const targetDbId = CATEGORY_DB_IDS[category];
     const titleProperty = TITLE_PROPERTY[category];
     const defaultStatus = DEFAULT_STATUS[category];
 
@@ -169,7 +117,6 @@ export async function POST(request: NextRequest) {
     if (category === 'Admin') {
       properties['Priority'] = { select: { name: extracted_data.priority || 'Medium' } };
       properties['Category'] = { select: { name: 'Home' } };
-      // Add due date if reminder is set
       if (reminderDate) {
         properties['Due Date'] = { date: { start: reminderDate } };
       }
@@ -181,13 +128,11 @@ export async function POST(request: NextRequest) {
           rich_text: [{ text: { content: extracted_data.next_action } }],
         };
       }
-      // Add due date if reminder is set
       if (reminderDate) {
         properties['Due Date'] = { date: { start: reminderDate } };
       }
     } else if (category === 'Idea') {
       properties['Category'] = { select: { name: 'Life' } };
-      // Maturity already set above via defaultStatus
       if (extracted_data.raw_insight) {
         properties['Raw Insight'] = {
           rich_text: [{ text: { content: extracted_data.raw_insight } }],
@@ -207,38 +152,31 @@ export async function POST(request: NextRequest) {
           rich_text: [{ text: { content: extracted_data.context } }],
         };
       }
-      // Add follow-up date if reminder is set
       if (reminderDate) {
         properties['Next Follow-up'] = { date: { start: reminderDate } };
       }
     }
 
     // Step 3: Create the Notion page
-    const newPage = await notionRequest('/pages', 'POST', {
-      parent: { database_id: targetDbId },
-      properties,
-    });
+    const newPage = await createPage(targetDbId, properties);
 
     // Step 4: Log to Inbox Log
     try {
-      await notionRequest('/pages', 'POST', {
-        parent: { database_id: INBOX_LOG_DB_ID },
-        properties: {
-          'Raw Input': {
-            title: [{ text: { content: text } }],
-          },
-          Category: {
-            select: { name: category },
-          },
-          Confidence: {
-            number: confidence,
-          },
-          'Destination ID': {
-            rich_text: [{ text: { content: newPage.id } }],
-          },
-          Status: {
-            select: { name: 'Processed' },
-          },
+      await createPage(DATABASE_IDS.InboxLog, {
+        'Raw Input': {
+          title: [{ text: { content: text } }],
+        },
+        Category: {
+          select: { name: category },
+        },
+        Confidence: {
+          number: confidence,
+        },
+        'Destination ID': {
+          rich_text: [{ text: { content: newPage.id } }],
+        },
+        Status: {
+          select: { name: 'Processed' },
         },
       });
     } catch (logError) {

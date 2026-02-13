@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState, useEffect, useCallback } from 'react';
 
-// Zen navigation - minimal, calm icons
-const NAV_ITEMS = [
+// Primary tabs shown in bottom nav
+const PRIMARY_ITEMS = [
   {
     href: '/',
     label: 'Capture',
@@ -46,16 +47,6 @@ const NAV_ITEMS = [
     ),
   },
   {
-    href: '/reading',
-    label: 'Read',
-    icon: (
-      <svg className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-      </svg>
-    ),
-  },
-  {
     href: '/digest',
     label: 'Digest',
     icon: (
@@ -67,9 +58,25 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
+];
+
+// Items tucked under the "More" menu
+const MORE_ITEMS = [
+  {
+    href: '/reading',
+    label: 'Read',
+    description: 'Saved articles & reading list',
+    icon: (
+      <svg className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+      </svg>
+    ),
+  },
   {
     href: '/settings',
     label: 'Settings',
+    description: 'Connections & preferences',
     icon: (
       <svg className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="3" />
@@ -79,10 +86,31 @@ const NAV_ITEMS = [
   },
 ];
 
+const MORE_HREFS = MORE_ITEMS.map((item) => item.href);
+
 export function Nav() {
   const pathname = usePathname();
+  const [moreOpen, setMoreOpen] = useState(false);
 
-  // Zen navigation - calm, unobtrusive
+  // Close sheet on route change
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [pathname]);
+
+  // Close on Escape key
+  useEffect(() => {
+    if (!moreOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMoreOpen(false);
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [moreOpen]);
+
+  const closeSheet = useCallback(() => setMoreOpen(false), []);
+
+  const isMoreActive = MORE_HREFS.includes(pathname);
+
   const navStyle: React.CSSProperties = {
     position: 'fixed',
     bottom: 0,
@@ -118,32 +146,168 @@ export function Nav() {
   };
 
   return (
-    <nav style={navStyle}>
-      <div style={containerStyle}>
-        {NAV_ITEMS.map((item) => {
-          const isActive = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              style={{
-                ...itemStyle,
-                color: isActive ? 'var(--nav-text-active)' : 'var(--nav-text)',
-                opacity: isActive ? 1 : 0.9,
-              }}
-            >
-              {item.icon}
-              <span style={{
-                fontSize: '9px',
-                fontWeight: isActive ? 500 : 400,
-                letterSpacing: '0.02em',
-              }}>
-                {item.label}
-              </span>
-            </Link>
-          );
-        })}
-      </div>
-    </nav>
+    <>
+      {/* Backdrop overlay */}
+      {moreOpen && (
+        <div
+          onClick={closeSheet}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.4)',
+            backdropFilter: 'blur(4px)',
+            WebkitBackdropFilter: 'blur(4px)',
+            zIndex: 49,
+            animation: 'fadeIn 0.2s ease',
+          }}
+        />
+      )}
+
+      {/* Slide-up sheet */}
+      {moreOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 'calc(60px + env(safe-area-inset-bottom, 0px))',
+            left: 0,
+            right: 0,
+            zIndex: 51,
+            display: 'flex',
+            justifyContent: 'center',
+            padding: '0 16px',
+            animation: 'slideUp 0.2s ease',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '400px',
+              background: 'var(--nav-bg)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              borderRadius: '16px',
+              border: '1px solid var(--nav-border)',
+              overflow: 'hidden',
+              marginBottom: '8px',
+            }}
+          >
+            {MORE_ITEMS.map((item, i) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '14px',
+                    padding: '14px 20px',
+                    textDecoration: 'none',
+                    color: isActive ? 'var(--nav-text-active)' : 'var(--nav-text)',
+                    transition: 'all 0.15s ease',
+                    borderBottom: i < MORE_ITEMS.length - 1 ? '1px solid var(--nav-border)' : 'none',
+                  }}
+                >
+                  {item.icon}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{
+                      fontSize: '14px',
+                      fontWeight: isActive ? 600 : 500,
+                      letterSpacing: '0.01em',
+                    }}>
+                      {item.label}
+                    </span>
+                    <span style={{
+                      fontSize: '11px',
+                      opacity: 0.5,
+                      fontWeight: 400,
+                    }}>
+                      {item.description}
+                    </span>
+                  </div>
+                  {isActive && (
+                    <div style={{
+                      marginLeft: 'auto',
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: 'var(--nav-text-active)',
+                    }} />
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Bottom nav bar */}
+      <nav style={navStyle}>
+        <div style={containerStyle}>
+          {PRIMARY_ITEMS.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                style={{
+                  ...itemStyle,
+                  color: isActive ? 'var(--nav-text-active)' : 'var(--nav-text)',
+                  opacity: isActive ? 1 : 0.9,
+                }}
+              >
+                {item.icon}
+                <span style={{
+                  fontSize: '10px',
+                  fontWeight: isActive ? 500 : 400,
+                  letterSpacing: '0.02em',
+                }}>
+                  {item.label}
+                </span>
+              </Link>
+            );
+          })}
+
+          {/* More button */}
+          <button
+            onClick={() => setMoreOpen((prev) => !prev)}
+            style={{
+              ...itemStyle,
+              color: isMoreActive ? 'var(--nav-text-active)' : 'var(--nav-text)',
+              opacity: isMoreActive ? 1 : 0.9,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            <svg className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none" />
+              <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+              <circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none" />
+            </svg>
+            <span style={{
+              fontSize: '10px',
+              fontWeight: isMoreActive ? 500 : 400,
+              letterSpacing: '0.02em',
+            }}>
+              More
+            </span>
+          </button>
+        </div>
+      </nav>
+
+      {/* Animations */}
+      <style jsx global>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(12px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+    </>
   );
 }

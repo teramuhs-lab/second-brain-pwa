@@ -5,6 +5,7 @@ import { searchEntries, markDone, snoozeEntry, updateEntry } from '@/lib/api';
 import type { SearchResult, Category, SavedSearch } from '@/lib/types';
 import { useToast } from '@/components/Toast';
 import { SearchDetailModal } from '@/components/SearchDetailModal';
+import { formatRelativeDate } from '@/lib/utils/date';
 
 // Zen styling - muted, neutral colors
 const CATEGORY_COLORS: Record<Category, string> = {
@@ -343,18 +344,7 @@ export default function SearchPage() {
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays}d ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
+  const formatDate = formatRelativeDate;
 
   return (
     <div className="mx-auto max-w-lg px-5 pt-8 pb-24">

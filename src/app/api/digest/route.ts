@@ -3,24 +3,11 @@ import OpenAI from 'openai';
 import { isGoogleConnected } from '@/services/google/auth';
 import { fetchTodaysEvents } from '@/services/google/calendar';
 import type { CalendarEvent } from '@/services/google/types';
+import { DATABASE_IDS } from '@/config/constants';
+import { queryDatabase, type NotionPage } from '@/services/notion/client';
+import { extractTitle, extractSelect, extractDate, extractRichText } from '@/services/notion/helpers';
 
-// Notion database IDs
-const DATABASE_IDS = {
-  People: '2f092129-b3db-81b4-b767-fed1e3190303',
-  Projects: '2f092129-b3db-81fd-aef1-e62b4f3445ff',
-  Admin: '2f092129-b3db-8171-ae6c-f98e8124574c',
-  InboxLog: '2f092129-b3db-8104-a9ca-fc123e5be4a3',
-};
-
-const NOTION_API_KEY = process.env.NOTION_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
-interface NotionPage {
-  id: string;
-  properties: Record<string, unknown>;
-  created_time: string;
-  last_edited_time: string;
-}
 
 interface DigestItem {
   id: string;
@@ -31,61 +18,6 @@ interface DigestItem {
   nextAction?: string;
   company?: string;
   category?: string;
-}
-
-async function notionRequest(endpoint: string, method: string, body?: object) {
-  const response = await fetch(`https://api.notion.com/v1${endpoint}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${NOTION_API_KEY}`,
-      'Content-Type': 'application/json',
-      'Notion-Version': '2022-06-28',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Notion API error: ${response.status} - ${error}`);
-  }
-
-  return response.json();
-}
-
-function extractTitle(properties: Record<string, unknown>, titleKey: string = 'Name'): string {
-  const titleProps = [titleKey, 'Name', 'Title', 'Task'];
-  for (const prop of titleProps) {
-    const titleProp = properties[prop] as { title?: Array<{ plain_text: string }> } | undefined;
-    if (titleProp?.title?.[0]?.plain_text) {
-      return titleProp.title[0].plain_text;
-    }
-  }
-  return 'Untitled';
-}
-
-function extractStatus(properties: Record<string, unknown>): string | undefined {
-  const statusProp = properties['Status'] as { select?: { name: string } } | undefined;
-  return statusProp?.select?.name;
-}
-
-function extractPriority(properties: Record<string, unknown>): string | undefined {
-  const priorityProp = properties['Priority'] as { select?: { name: string } } | undefined;
-  return priorityProp?.select?.name;
-}
-
-function extractDate(properties: Record<string, unknown>, dateKey: string): string | undefined {
-  const dateProp = properties[dateKey] as { date?: { start: string } } | undefined;
-  return dateProp?.date?.start;
-}
-
-function extractRichText(properties: Record<string, unknown>, key: string): string | undefined {
-  const richTextProp = properties[key] as { rich_text?: Array<{ plain_text: string }> } | undefined;
-  return richTextProp?.rich_text?.[0]?.plain_text;
-}
-
-function extractCategory(properties: Record<string, unknown>): string | undefined {
-  const categoryProp = properties['Category'] as { select?: { name: string } } | undefined;
-  return categoryProp?.select?.name;
 }
 
 // Fetch calendar events safely (never throws)
@@ -104,55 +36,40 @@ async function fetchDailyData(): Promise<{
   followups: DigestItem[];
   calendarEvents: CalendarEvent[];
 }> {
-  // Fetch all databases + calendar in parallel
-  const [projectsResponse, adminResponse, peopleResponse, calendarEvents] = await Promise.all([
-    notionRequest(`/databases/${DATABASE_IDS.Projects}/query`, 'POST', {
-      page_size: 100,
-      sorts: [{ property: 'Priority', direction: 'ascending' }],
-    }),
-    notionRequest(`/databases/${DATABASE_IDS.Admin}/query`, 'POST', {
-      page_size: 100,
-      sorts: [{ property: 'Priority', direction: 'ascending' }],
-    }),
-    notionRequest(`/databases/${DATABASE_IDS.People}/query`, 'POST', {
-      page_size: 100,
-    }),
+  const [projectPages, adminPages, peoplePages, calendarEvents] = await Promise.all([
+    queryDatabase(DATABASE_IDS.Projects, undefined, [{ property: 'Priority', direction: 'ascending' }]),
+    queryDatabase(DATABASE_IDS.Admin, undefined, [{ property: 'Priority', direction: 'ascending' }]),
+    queryDatabase(DATABASE_IDS.People),
     fetchCalendarOrEmpty(),
   ]);
 
   // Filter projects: Status = 'Active'
-  const projects: DigestItem[] = (projectsResponse.results as NotionPage[])
-    .filter((page) => {
-      const status = extractStatus(page.properties)?.toLowerCase();
-      return status === 'active';
-    })
+  const projects: DigestItem[] = projectPages
+    .filter((page) => extractSelect(page.properties, 'Status')?.toLowerCase() === 'active')
     .map((page) => ({
       id: page.id,
       title: extractTitle(page.properties),
-      status: extractStatus(page.properties),
-      priority: extractPriority(page.properties),
+      status: extractSelect(page.properties, 'Status'),
+      priority: extractSelect(page.properties, 'Priority'),
       dueDate: extractDate(page.properties, 'Due Date'),
-      nextAction: extractRichText(page.properties, 'Next Action'),
+      nextAction: extractRichText(page.properties, 'Next Action') || undefined,
     }));
 
   // Filter admin: Status = 'Todo'
-  const tasks: DigestItem[] = (adminResponse.results as NotionPage[])
-    .filter((page) => {
-      const status = extractStatus(page.properties)?.toLowerCase();
-      return status === 'todo';
-    })
+  const tasks: DigestItem[] = adminPages
+    .filter((page) => extractSelect(page.properties, 'Status')?.toLowerCase() === 'todo')
     .map((page) => ({
       id: page.id,
-      title: extractTitle(page.properties, 'Task'),
-      status: extractStatus(page.properties),
-      priority: extractPriority(page.properties),
+      title: extractTitle(page.properties),
+      status: extractSelect(page.properties, 'Status'),
+      priority: extractSelect(page.properties, 'Priority'),
       dueDate: extractDate(page.properties, 'Due Date'),
-      category: extractCategory(page.properties),
+      category: extractSelect(page.properties, 'Category'),
     }));
 
   // Filter people: Next Follow-up <= today
   const today = new Date().toISOString().split('T')[0];
-  const followups: DigestItem[] = (peopleResponse.results as NotionPage[])
+  const followups: DigestItem[] = peoplePages
     .filter((page) => {
       const nextFollowup = extractDate(page.properties, 'Next Follow-up');
       return nextFollowup && nextFollowup <= today;
@@ -160,8 +77,8 @@ async function fetchDailyData(): Promise<{
     .map((page) => ({
       id: page.id,
       title: extractTitle(page.properties),
-      status: extractStatus(page.properties),
-      company: extractRichText(page.properties, 'Company'),
+      status: extractSelect(page.properties, 'Status'),
+      company: extractRichText(page.properties, 'Company') || undefined,
       dueDate: extractDate(page.properties, 'Next Follow-up'),
     }));
 
@@ -178,48 +95,38 @@ async function fetchWeeklyData(): Promise<{
   oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
   const weekAgoISO = oneWeekAgo.toISOString();
 
-  // Fetch all databases in parallel
-  const [inboxResponse, adminResponse, projectsResponse] = await Promise.all([
-    notionRequest(`/databases/${DATABASE_IDS.InboxLog}/query`, 'POST', {
-      page_size: 100,
-      filter: {
-        timestamp: 'created_time',
-        created_time: { past_week: {} },
-      },
+  const [inboxPages, adminPages, projectPages] = await Promise.all([
+    queryDatabase(DATABASE_IDS.InboxLog, {
+      timestamp: 'created_time',
+      created_time: { past_week: {} },
     }),
-    notionRequest(`/databases/${DATABASE_IDS.Admin}/query`, 'POST', {
-      page_size: 100,
-    }),
-    notionRequest(`/databases/${DATABASE_IDS.Projects}/query`, 'POST', {
-      page_size: 100,
-    }),
+    queryDatabase(DATABASE_IDS.Admin),
+    queryDatabase(DATABASE_IDS.Projects),
   ]);
 
   // Filter completed tasks: Status = 'Done' & edited this week
-  const completedTasks: DigestItem[] = (adminResponse.results as NotionPage[])
+  const completedTasks: DigestItem[] = adminPages
     .filter((page) => {
-      const status = extractStatus(page.properties)?.toLowerCase();
-      const editedRecently = page.last_edited_time >= weekAgoISO;
-      return status === 'done' && editedRecently;
-    })
-    .map((page) => ({
-      id: page.id,
-      title: extractTitle(page.properties, 'Task'),
-      status: extractStatus(page.properties),
-      priority: extractPriority(page.properties),
-    }));
-
-  // Filter completed projects: Status = 'Complete' & edited this week
-  const completedProjects: DigestItem[] = (projectsResponse.results as NotionPage[])
-    .filter((page) => {
-      const status = extractStatus(page.properties)?.toLowerCase();
-      const editedRecently = page.last_edited_time >= weekAgoISO;
-      return status === 'complete' && editedRecently;
+      const status = extractSelect(page.properties, 'Status')?.toLowerCase();
+      return status === 'done' && page.last_edited_time >= weekAgoISO;
     })
     .map((page) => ({
       id: page.id,
       title: extractTitle(page.properties),
-      status: extractStatus(page.properties),
+      status: extractSelect(page.properties, 'Status'),
+      priority: extractSelect(page.properties, 'Priority'),
+    }));
+
+  // Filter completed projects: Status = 'Complete' & edited this week
+  const completedProjects: DigestItem[] = projectPages
+    .filter((page) => {
+      const status = extractSelect(page.properties, 'Status')?.toLowerCase();
+      return status === 'complete' && page.last_edited_time >= weekAgoISO;
+    })
+    .map((page) => ({
+      id: page.id,
+      title: extractTitle(page.properties),
+      status: extractSelect(page.properties, 'Status'),
     }));
 
   // Group inbox entries by category
@@ -230,11 +137,11 @@ async function fetchWeeklyData(): Promise<{
     Admin: [],
   };
 
-  (inboxResponse.results as NotionPage[]).forEach((page) => {
-    const category = extractCategory(page.properties) || 'Admin';
+  inboxPages.forEach((page) => {
+    const category = extractSelect(page.properties, 'Category') || 'Admin';
     const item: DigestItem = {
       id: page.id,
-      title: extractTitle(page.properties, 'Raw Input'),
+      title: extractTitle(page.properties),
       category,
     };
     if (inboxByCategory[category]) {
@@ -246,7 +153,7 @@ async function fetchWeeklyData(): Promise<{
     completedTasks,
     completedProjects,
     inboxByCategory,
-    totalInbox: inboxResponse.results.length,
+    totalInbox: inboxPages.length,
   };
 }
 
@@ -413,13 +320,6 @@ FORMATTING RULES:
 
 export async function GET(request: NextRequest) {
   try {
-    if (!NOTION_API_KEY) {
-      return NextResponse.json(
-        { status: 'error', error: 'NOTION_API_KEY not configured' },
-        { status: 500 }
-      );
-    }
-
     const type = request.nextUrl.searchParams.get('type') || 'daily';
 
     if (type === 'daily') {
@@ -430,11 +330,7 @@ export async function GET(request: NextRequest) {
         status: 'success',
         type: 'daily',
         generatedAt: new Date().toISOString(),
-        data: {
-          projects,
-          tasks,
-          followups,
-        },
+        data: { projects, tasks, followups },
         counts: {
           projects: projects.length,
           tasks: tasks.length,
@@ -456,11 +352,7 @@ export async function GET(request: NextRequest) {
         status: 'success',
         type: 'weekly',
         generatedAt: new Date().toISOString(),
-        data: {
-          completedTasks,
-          completedProjects,
-          inboxByCategory,
-        },
+        data: { completedTasks, completedProjects, inboxByCategory },
         counts: {
           completedTasks: completedTasks.length,
           completedProjects: completedProjects.length,

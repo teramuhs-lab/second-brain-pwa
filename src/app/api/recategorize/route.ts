@@ -1,63 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-// Notion database IDs
-const DATABASE_IDS: Record<string, string> = {
-  People: '2f092129-b3db-81b4-b767-fed1e3190303',
-  Project: '2f092129-b3db-81fd-aef1-e62b4f3445ff',
-  Idea: '2f092129-b3db-8121-b140-f7a8f4ec2a45',
-  Admin: '2f092129-b3db-8171-ae6c-f98e8124574c',
-};
-
-// Inbox Log database ID
-const INBOX_LOG_DB_ID = '2f092129-b3db-8104-a9ca-fc123e5be4a3';
-
-// Default status for each category
-const DEFAULT_STATUS: Record<string, string> = {
-  People: 'New',
-  Project: 'Active',
-  Idea: 'Spark',
-  Admin: 'Todo',
-};
-
-// Title property name for each category
-const TITLE_PROPERTY: Record<string, string> = {
-  People: 'Name',
-  Project: 'Name',
-  Idea: 'Title',
-  Admin: 'Task',
-};
-
-const NOTION_API_KEY = process.env.NOTION_API_KEY;
-
-async function notionRequest(endpoint: string, method: string, body?: object) {
-  const response = await fetch(`https://api.notion.com/v1${endpoint}`, {
-    method,
-    headers: {
-      'Authorization': `Bearer ${NOTION_API_KEY}`,
-      'Content-Type': 'application/json',
-      'Notion-Version': '2022-06-28',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Notion API error: ${response.status} - ${error}`);
-  }
-
-  return response.json();
-}
+import { DATABASE_IDS, CATEGORY_DB_IDS, DEFAULT_STATUS, TITLE_PROPERTY } from '@/config/constants';
+import { createPage, archivePage } from '@/services/notion/client';
 
 export async function POST(request: NextRequest) {
   try {
-    // Check for Notion API key
-    if (!NOTION_API_KEY) {
-      return NextResponse.json(
-        { status: 'error', error: 'NOTION_API_KEY not configured' },
-        { status: 500 }
-      );
-    }
-
     const body = await request.json();
     const { page_id, current_category, new_category, raw_text } = body;
 
@@ -69,7 +15,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const targetDbId = DATABASE_IDS[new_category];
+    const targetDbId = CATEGORY_DB_IDS[new_category];
     if (!targetDbId) {
       return NextResponse.json(
         { status: 'error', error: `Invalid category: ${new_category}` },
@@ -79,10 +25,9 @@ export async function POST(request: NextRequest) {
 
     // Step 1: Archive the old page
     try {
-      await notionRequest(`/pages/${page_id}`, 'PATCH', { archived: true });
+      await archivePage(page_id);
     } catch (error) {
       console.error('Failed to archive old page:', error);
-      // Continue anyway - maybe the page doesn't exist
     }
 
     // Step 2: Create new page in target database
@@ -95,11 +40,9 @@ export async function POST(request: NextRequest) {
       },
     };
 
-    // Ideas uses Maturity instead of Status — skip Status for Ideas
+    // Ideas uses Maturity instead of Status
     if (new_category !== 'Idea') {
-      properties['Status'] = {
-        select: { name: defaultStatus },
-      };
+      properties['Status'] = { select: { name: defaultStatus } };
     }
 
     // Add category-specific defaults
@@ -118,35 +61,18 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    const newPage = await notionRequest('/pages', 'POST', {
-      parent: { database_id: targetDbId },
-      properties,
-    });
+    const newPage = await createPage(targetDbId, properties);
 
     // Step 3: Log to Inbox Log database
     try {
-      await notionRequest('/pages', 'POST', {
-        parent: { database_id: INBOX_LOG_DB_ID },
-        properties: {
-          'Raw Input': {
-            title: [{ text: { content: raw_text } }],
-          },
-          'Category': {
-            select: { name: new_category },
-          },
-          'Confidence': {
-            number: 1.0, // User explicitly chose this category
-          },
-          'Destination ID': {
-            rich_text: [{ text: { content: newPage.id } }],
-          },
-          'Status': {
-            select: { name: 'Fixed' },
-          },
-        },
+      await createPage(DATABASE_IDS.InboxLog, {
+        'Raw Input': { title: [{ text: { content: raw_text } }] },
+        'Category': { select: { name: new_category } },
+        'Confidence': { number: 1.0 },
+        'Destination ID': { rich_text: [{ text: { content: newPage.id } }] },
+        'Status': { select: { name: 'Fixed' } },
       });
     } catch (logError) {
-      // Log error but don't fail the request - the recategorization succeeded
       console.error('Failed to log to Inbox Log:', logError);
     }
 

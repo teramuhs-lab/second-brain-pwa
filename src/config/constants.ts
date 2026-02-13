@@ -35,6 +35,31 @@ export const DB_TO_CATEGORY: Record<DatabaseKey, string> = {
   InboxLog: 'InboxLog',
 } as const;
 
+// Map AI classification category names (singular) to database IDs
+// Used by capture, recategorize, and agent routes
+export const CATEGORY_DB_IDS: Record<string, string> = {
+  People: DATABASE_IDS.People,
+  Project: DATABASE_IDS.Projects,
+  Idea: DATABASE_IDS.Ideas,
+  Admin: DATABASE_IDS.Admin,
+};
+
+// Default status for each category when creating new entries
+export const DEFAULT_STATUS: Record<string, string> = {
+  People: 'New',
+  Project: 'Active',
+  Idea: 'Spark',
+  Admin: 'Todo',
+};
+
+// Title property name for each category's Notion database
+export const TITLE_PROPERTY: Record<string, string> = {
+  People: 'Name',
+  Project: 'Name',
+  Idea: 'Title',
+  Admin: 'Task',
+};
+
 // n8n webhook base URL
 export const N8N_BASE_URL = process.env.NEXT_PUBLIC_N8N_URL || 'https://n8n.srv1236227.hstgr.cloud';
 

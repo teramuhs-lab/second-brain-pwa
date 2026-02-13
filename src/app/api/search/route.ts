@@ -1,23 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-
-// Notion database IDs
-const DATABASE_IDS = {
-  People: '2f092129-b3db-81b4-b767-fed1e3190303',
-  Projects: '2f092129-b3db-81fd-aef1-e62b4f3445ff',
-  Ideas: '2f092129-b3db-8121-b140-f7a8f4ec2a45',
-  Admin: '2f092129-b3db-8171-ae6c-f98e8124574c',
-};
+import { DATABASE_IDS } from '@/config/constants';
+import { type NotionPage } from '@/services/notion/client';
+import { extractTitle, extractSelect, extractDate, extractUrl as extractUrlProp } from '@/services/notion/helpers';
 
 const NOTION_API_KEY = process.env.NOTION_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
-interface NotionPage {
-  id: string;
-  properties: Record<string, unknown>;
-  created_time: string;
-  last_edited_time: string;
-}
 
 interface SearchResult {
   id: string;
@@ -150,7 +138,7 @@ Examples:
 }
 
 // ============================================
-// NOTION HELPERS
+// NOTION HELPERS (search-specific)
 // ============================================
 
 async function notionRequest(endpoint: string, method: string, body?: object) {
@@ -172,35 +160,8 @@ async function notionRequest(endpoint: string, method: string, body?: object) {
   return response.json();
 }
 
-function extractTitle(properties: Record<string, unknown>): string {
-  const titleProps = ['Name', 'Title', 'Task'];
-  for (const prop of titleProps) {
-    const titleProp = properties[prop] as { title?: Array<{ plain_text: string }> } | undefined;
-    if (titleProp?.title?.[0]?.plain_text) {
-      return titleProp.title[0].plain_text;
-    }
-  }
-  return 'Untitled';
-}
-
-function extractStatus(properties: Record<string, unknown>): string | undefined {
-  const statusProp = properties['Status'] as { select?: { name: string } } | undefined;
-  return statusProp?.select?.name;
-}
-
-function extractPriority(properties: Record<string, unknown>): string | undefined {
-  const priorityProp = properties['Priority'] as { select?: { name: string } } | undefined;
-  return priorityProp?.select?.name;
-}
-
-function extractDate(properties: Record<string, unknown>, field: string): string | undefined {
-  const dateProp = properties[field] as { date?: { start: string } } | undefined;
-  return dateProp?.date?.start;
-}
-
 function extractSource(properties: Record<string, unknown>): string | undefined {
-  const sourceProp = properties['Source'] as { url?: string } | undefined;
-  return sourceProp?.url || undefined;
+  return extractUrlProp(properties, 'Source');
 }
 
 function extractText(properties: Record<string, unknown>): string {
@@ -493,8 +454,8 @@ async function searchDatabase(
         id: page.id,
         title,
         category,
-        status: extractStatus(page.properties),
-        priority: extractPriority(page.properties),
+        status: extractSelect(page.properties, 'Status'),
+        priority: extractSelect(page.properties, 'Priority'),
         dueDate: extractDate(page.properties, 'Due Date') || extractDate(page.properties, 'Next Follow-up'),
         created: page.created_time,
         lastEdited: page.last_edited_time,

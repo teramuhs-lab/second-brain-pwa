@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ReadingItem } from '@/lib/types';
+import { formatRelativeDate } from '@/lib/utils/date';
 import { ReadingSummaryCard } from '@/components/ReadingSummaryCard';
 import { PullToRefresh } from '@/features/tasks/components/PullToRefresh';
 
@@ -71,19 +72,7 @@ export default function ReadingPage() {
     return 'text-[var(--text-muted)]/60';
   };
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffHours < 1) return 'Just now';
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
+  const formatDate = formatRelativeDate;
 
   const getHostname = (url: string) => {
     try {

@@ -3,13 +3,8 @@
 import { useState, useEffect } from 'react';
 import { fetchEntries } from '@/lib/api';
 import type { Entry, Category } from '@/lib/types';
-
-const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  People: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/30' },
-  Project: { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/30' },
-  Idea: { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/30' },
-  Admin: { bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/30' },
-};
+import { formatRelativeDate } from '@/lib/utils/date';
+import { CATEGORY_BADGE_COLORS } from '@/config/ui';
 
 export default function HistoryPage() {
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -51,17 +46,7 @@ export default function HistoryPage() {
     ? entries
     : entries.filter((e) => (e as Entry & { category: Category }).category === filter);
 
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return '';
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays} days ago`;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
+  const formatDate = formatRelativeDate;
 
   return (
     <div className="mx-auto max-w-lg px-5 pt-8">
@@ -112,7 +97,7 @@ export default function HistoryPage() {
         ) : (
           filteredEntries.slice(0, 50).map((entry) => {
             const category = (entry as Entry & { category: Category }).category;
-            const colors = CATEGORY_COLORS[category] || CATEGORY_COLORS.Admin;
+            const colors = CATEGORY_BADGE_COLORS[category] || CATEGORY_BADGE_COLORS.Admin;
 
             return (
               <div
