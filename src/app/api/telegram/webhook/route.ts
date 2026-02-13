@@ -18,19 +18,21 @@ export async function POST(request: NextRequest) {
     // Must await — Vercel kills the function after response is sent
     try {
       await handleUpdate(update);
+      return NextResponse.json({ ok: true, handled: true });
     } catch (handlerError) {
-      console.error('Telegram update handler error:', handlerError);
+      const errMsg = handlerError instanceof Error ? handlerError.message : String(handlerError);
+      const errStack = handlerError instanceof Error ? handlerError.stack : undefined;
+      console.error('Telegram update handler error:', errMsg, errStack);
+      return NextResponse.json({ ok: true, error: errMsg });
     }
-
-    return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error('Telegram webhook error:', error);
-    // Always return 200 to prevent Telegram from retrying
-    return NextResponse.json({ ok: true });
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('Telegram webhook error:', errMsg);
+    return NextResponse.json({ ok: true, error: errMsg });
   }
 }
 
-// GET endpoint to register/check webhook
+// GET endpoint — also serves as diagnostic
 export async function GET(request: NextRequest) {
   const action = request.nextUrl.searchParams.get('action');
 
@@ -50,8 +52,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(result);
   }
 
+  // Diagnostic: check which env vars are set
+  if (action === 'debug') {
+    return NextResponse.json({
+      TELEGRAM_BOT_TOKEN: !!process.env.TELEGRAM_BOT_TOKEN,
+      TELEGRAM_CHAT_ID: !!process.env.TELEGRAM_CHAT_ID,
+      TELEGRAM_WEBHOOK_SECRET: !!process.env.TELEGRAM_WEBHOOK_SECRET,
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'NOT SET',
+      DATABASE_URL: !!process.env.DATABASE_URL,
+      OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+    });
+  }
+
   return NextResponse.json({
     status: 'ok',
-    message: 'Telegram webhook endpoint. Use ?action=set to register or ?action=delete to remove.',
+    message: 'Telegram webhook endpoint. Use ?action=set to register, ?action=delete to remove, ?action=debug to check env.',
   });
 }
