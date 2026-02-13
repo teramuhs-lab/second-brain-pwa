@@ -15,12 +15,12 @@ export async function POST(request: NextRequest) {
 
     const update: TelegramUpdate = await request.json();
 
-    // Process asynchronously — Telegram expects a fast 200 OK
-    // Using waitUntil would be ideal but isn't available in all runtimes,
-    // so we fire-and-forget with error logging
-    handleUpdate(update).catch((error) => {
-      console.error('Telegram update handler error:', error);
-    });
+    // Must await — Vercel kills the function after response is sent
+    try {
+      await handleUpdate(update);
+    } catch (handlerError) {
+      console.error('Telegram update handler error:', handlerError);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {
