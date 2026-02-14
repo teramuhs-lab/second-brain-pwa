@@ -2,9 +2,9 @@
 
 import { ReactNode } from 'react';
 import { ThemeProvider } from './ThemeProvider';
-import { ToastProvider } from './Toast';
+import { ToastProvider } from '@/shared/components/Toast';
 import { ErrorBoundary } from './ErrorBoundary';
-import { QuickCapture } from './QuickCapture';
+import { QuickCapture } from '@/features/capture/components/QuickCapture';
 
 export function Providers({ children }: { children: ReactNode }) {
   return (

@@ -26,7 +26,8 @@ async function fetchCalendarOrEmpty(): Promise<CalendarEvent[]> {
   try {
     if (!(await isGoogleConnected())) return [];
     return await fetchTodaysEvents();
-  } catch {
+  } catch (err) {
+    console.warn('Calendar fetch failed (returning empty):', err);
     return [];
   }
 }

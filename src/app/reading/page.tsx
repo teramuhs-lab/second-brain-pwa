@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ReadingItem } from '@/lib/types';
 import { formatRelativeDate } from '@/lib/utils/date';
-import { ReadingSummaryCard } from '@/components/ReadingSummaryCard';
+import { ReadingSummaryCard } from '@/features/reading/components/ReadingSummaryCard';
 import { PullToRefresh } from '@/features/tasks/components/PullToRefresh';
 
 // Fetch ideas with source URL

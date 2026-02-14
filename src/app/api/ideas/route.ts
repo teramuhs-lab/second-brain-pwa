@@ -1,14 +1,22 @@
-import { NextResponse } from 'next/server';
-import { queryEntries } from '@/services/db/entries';
+import { NextRequest, NextResponse } from 'next/server';
+import { queryEntries, countEntries } from '@/services/db/entries';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const ideaEntries = await queryEntries({
-      category: 'Ideas',
-      orderBy: 'created_at',
-      orderDir: 'desc',
-      limit: 100,
-    });
+    const { searchParams } = request.nextUrl;
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+    const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '50')));
+
+    const [ideaEntries, total] = await Promise.all([
+      queryEntries({
+        category: 'Ideas',
+        orderBy: 'created_at',
+        orderDir: 'desc',
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+      }),
+      countEntries({ category: 'Ideas' }),
+    ]);
 
     const items = ideaEntries.map(entry => {
       const content = (entry.content as Record<string, unknown>) || {};
@@ -26,6 +34,10 @@ export async function GET() {
     return NextResponse.json({
       status: 'success',
       count: items.length,
+      total,
+      page,
+      pageSize,
+      hasMore: page * pageSize < total,
       items,
     });
   } catch (error) {

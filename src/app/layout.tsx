@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Nav } from '@/components/Nav';
+import { Nav } from '@/shared/components/Nav';
 import { Providers } from '@/components/Providers';
 import './globals.css';
 

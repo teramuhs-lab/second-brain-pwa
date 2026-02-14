@@ -3,6 +3,7 @@ import * as cheerio from 'cheerio';
 import OpenAI from 'openai';
 import { YoutubeTranscript } from 'youtube-transcript';
 import { createEntry } from '@/services/db/entries';
+import { validate, processUrlSchema } from '@/lib/validation';
 
 // Environment variables
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -103,7 +104,8 @@ async function fetchYouTubeInfo(url: string): Promise<{
       author: data.author_name || '',
       thumbnail: data.thumbnail_url || '',
     };
-  } catch {
+  } catch (err) {
+    console.warn('YouTube oEmbed fetch failed:', err);
     return null;
   }
 }
@@ -583,29 +585,11 @@ async function createIdeaEntry(data: {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { url } = body;
-
-    // Validate URL
-    if (!url || typeof url !== 'string') {
-      return NextResponse.json(
-        { status: 'error', error: 'URL is required' },
-        { status: 400 }
-      );
+    const parsed = validate(processUrlSchema, body);
+    if (!parsed.success) {
+      return NextResponse.json({ status: 'error', error: parsed.error }, { status: 400 });
     }
-
-    // Validate URL format
-    let parsedUrl: URL;
-    try {
-      parsedUrl = new URL(url);
-      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-        throw new Error('Invalid protocol');
-      }
-    } catch {
-      return NextResponse.json(
-        { status: 'error', error: 'Invalid URL format' },
-        { status: 400 }
-      );
-    }
+    const { url } = parsed.data;
 
     // Detect URL type
     const urlType = detectUrlType(url);

@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { archiveEntry, getEntryByLegacyId } from '@/services/db/entries';
+import { validate, deleteSchema } from '@/lib/validation';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { page_id } = body;
-
-    if (!page_id) {
-      return NextResponse.json(
-        { status: 'error', error: 'Missing required field: page_id' },
-        { status: 400 }
-      );
+    const parsed = validate(deleteSchema, body);
+    if (!parsed.success) {
+      return NextResponse.json({ status: 'error', error: parsed.error }, { status: 400 });
     }
+    const { page_id } = parsed.data;
 
     // Find entry by ID
     const entry = await getEntryByLegacyId(page_id);

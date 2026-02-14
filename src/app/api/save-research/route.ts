@@ -3,31 +3,16 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createEntry } from '@/services/db/entries';
-
-interface SaveResearchRequest {
-  question: string;
-  answer: string;
-  category: 'Idea' | 'Admin';
-  citations?: Array<{
-    title: string;
-    type: string;
-    url?: string;
-    database?: string;
-  }>;
-  expertDomain?: string;
-}
+import { validate, saveResearchSchema } from '@/lib/validation';
 
 export async function POST(request: NextRequest) {
   try {
-    const body: SaveResearchRequest = await request.json();
-    const { question, answer, category, citations = [], expertDomain } = body;
-
-    if (!question || !answer || !category) {
-      return NextResponse.json(
-        { status: 'error', error: 'Missing required fields' },
-        { status: 400 }
-      );
+    const body = await request.json();
+    const parsed = validate(saveResearchSchema, body);
+    if (!parsed.success) {
+      return NextResponse.json({ status: 'error', error: parsed.error }, { status: 400 });
     }
+    const { question, answer, category, citations = [], expertDomain } = parsed.data;
 
     // Format citations as text
     const citationsText = citations.length > 0

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { markDone, deleteEntry, snoozeEntry } from '@/lib/api';
-import { useToast } from '@/components/Toast';
+import { useToast } from '@/shared/components/Toast';
 import { CATEGORY_ICONS, CATEGORY_GRADIENTS } from '@/config/ui';
 
 interface ReviewItem {

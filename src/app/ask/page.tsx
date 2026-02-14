@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { ChatMessage, ResearchingIndicator } from '@/components/ChatMessage';
-import { ChatInput } from '@/components/ChatInput';
+import { ChatMessage, ResearchingIndicator } from '@/features/chat/components/ChatMessage';
+import { ChatInput } from '@/features/chat/components/ChatInput';
 import { askResearchAgent, clearChat, saveResearchResult } from '@/lib/api';
 import type { ResearchCitation, ResearchStep } from '@/lib/types';
 

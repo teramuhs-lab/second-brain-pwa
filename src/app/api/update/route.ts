@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateEntry, getEntryByLegacyId } from '@/services/db/entries';
 import type { UpdateEntryInput } from '@/services/db/entries';
+import { validate, updateSchema } from '@/lib/validation';
 
 // Map frontend field keys to Neon content keys
 const CONTENT_FIELDS = new Set([
@@ -19,14 +20,11 @@ const CONTENT_KEY_MAP: Record<string, string> = {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { page_id, database, updates } = body;
-
-    if (!page_id || !database || !updates) {
-      return NextResponse.json(
-        { status: 'error', error: 'Missing required fields: page_id, database, updates' },
-        { status: 400 }
-      );
+    const parsed = validate(updateSchema, body);
+    if (!parsed.success) {
+      return NextResponse.json({ status: 'error', error: parsed.error }, { status: 400 });
     }
+    const { page_id, updates } = parsed.data;
 
     // Find entry by ID
     const entry = await getEntryByLegacyId(page_id);

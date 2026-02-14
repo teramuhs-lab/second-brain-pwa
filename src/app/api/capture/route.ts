@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createEntry, createInboxLogEntry } from '@/services/db/entries';
 import { suggestRelations, addRelation } from '@/services/db/relations';
+import { validate, captureSchema } from '@/lib/validation';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -71,15 +72,11 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { text, reminderDate } = body;
-
-    // Validate input
-    if (!text || typeof text !== 'string' || text.trim().length < 3) {
-      return NextResponse.json(
-        { status: 'error', error: 'Text must be at least 3 characters' },
-        { status: 400 }
-      );
+    const parsed = validate(captureSchema, body);
+    if (!parsed.success) {
+      return NextResponse.json({ status: 'error', error: parsed.error }, { status: 400 });
     }
+    const { text, reminderDate } = parsed.data;
 
     // Step 1: Classify the text with AI
     const classification = await classifyText(text.trim());

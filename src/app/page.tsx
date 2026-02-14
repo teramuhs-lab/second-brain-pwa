@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
-import { CaptureInput } from '@/components/CaptureInput';
-import { ConfirmCard } from '@/components/ConfirmCard';
-import { LinkSummaryCard } from '@/components/LinkSummaryCard';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { CaptureInput } from '@/features/capture/components/CaptureInput';
+import { ConfirmCard } from '@/features/capture/components/ConfirmCard';
+import { LinkSummaryCard } from '@/features/reading/components/LinkSummaryCard';
 import { captureThought, recategorize, processUrl } from '@/lib/api';
+import { getPendingItems, syncQueue } from '@/lib/offline-queue';
 import type { Category, ConfirmationState, UrlProcessResult } from '@/lib/types';
 
 // Progress stages for URL processing
@@ -22,6 +23,34 @@ export default function CapturePage() {
   const [lastText, setLastText] = useState('');
   const [processingStage, setProcessingStage] = useState(0);
   const [isUrlProcessing, setIsUrlProcessing] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Check offline queue on mount and on reconnect
+  useEffect(() => {
+    async function checkQueue() {
+      try {
+        const pending = await getPendingItems();
+        setPendingCount(pending.length);
+      } catch {
+        // IndexedDB not available
+      }
+    }
+    checkQueue();
+
+    async function handleOnline() {
+      const pending = await getPendingItems();
+      if (pending.length > 0) {
+        setIsSyncing(true);
+        const result = await syncQueue();
+        setPendingCount(result.failed);
+        setIsSyncing(false);
+      }
+    }
+
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, []);
 
   const handleCapture = useCallback(async (text: string, reminderDate?: string) => {
     setIsLoading(true);
@@ -30,7 +59,17 @@ export default function CapturePage() {
     try {
       const response = await captureThought(text, reminderDate);
 
-      if (response.status === 'captured' && response.category) {
+      // Check for offline save
+      if ('offline' in response && response.offline) {
+        setPendingCount(p => p + 1);
+        setConfirmation({
+          show: true,
+          text,
+          category: 'Admin',
+          confidence: 0,
+          page_id: undefined,
+        });
+      } else if (response.status === 'captured' && response.category) {
         setConfirmation({
           show: true,
           text,
@@ -126,6 +165,25 @@ export default function CapturePage() {
 
   return (
     <div className="mx-auto max-w-lg px-5 pt-12">
+      {/* Offline sync banner */}
+      {pendingCount > 0 && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 px-4 py-2.5 text-sm text-yellow-400">
+          {isSyncing ? (
+            <>
+              <div className="h-3 w-3 animate-spin rounded-full border-2 border-yellow-400 border-t-transparent" />
+              <span>Syncing {pendingCount} pending item{pendingCount !== 1 ? 's' : ''}...</span>
+            </>
+          ) : (
+            <>
+              <svg className="h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 9v2m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+              </svg>
+              <span>{pendingCount} item{pendingCount !== 1 ? 's' : ''} pending sync</span>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Header - zen styling */}
       <header className="mb-10 animate-fade-up">
         <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">

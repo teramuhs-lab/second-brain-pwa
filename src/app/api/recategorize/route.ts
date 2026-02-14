@@ -1,28 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createEntry, archiveEntry, getEntryByLegacyId, createInboxLogEntry } from '@/services/db/entries';
+import { validate, recategorizeSchema } from '@/lib/validation';
 
 type Category = 'People' | 'Project' | 'Idea' | 'Admin';
-const VALID_CATEGORIES = new Set(['People', 'Project', 'Idea', 'Admin']);
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { page_id, current_category, new_category, raw_text } = body;
-
-    // Validate input
-    if (!page_id || !new_category || !raw_text) {
-      return NextResponse.json(
-        { status: 'error', error: 'Missing required fields: page_id, new_category, raw_text' },
-        { status: 400 }
-      );
+    const parsed = validate(recategorizeSchema, body);
+    if (!parsed.success) {
+      return NextResponse.json({ status: 'error', error: parsed.error }, { status: 400 });
     }
-
-    if (!VALID_CATEGORIES.has(new_category)) {
-      return NextResponse.json(
-        { status: 'error', error: `Invalid category: ${new_category}` },
-        { status: 400 }
-      );
-    }
+    const { page_id, current_category, new_category, raw_text } = parsed.data;
 
     // Step 1: Archive the old entry
     try {

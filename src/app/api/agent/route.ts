@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createEntry } from '@/services/db/entries';
 import { agentTools } from '@/lib/agent-tools/definitions';
+import { validate, agentSchema } from '@/lib/validation';
 import { searchBrainEntries, getItemDetailsCore } from '@/lib/agent-tools/handlers';
 import { isGoogleConnected } from '@/services/google/auth';
 import { fetchTodaysEvents, fetchTomorrowsEvents, fetchWeekEvents, createCalendarEvent, deleteCalendarEvent } from '@/services/google/calendar';
@@ -476,16 +477,12 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { message, session_id } = body;
-
-    if (!message) {
-      return NextResponse.json(
-        { status: 'error', error: 'Missing message' },
-        { status: 400 }
-      );
+    const parsed = validate(agentSchema, body);
+    if (!parsed.success) {
+      return NextResponse.json({ status: 'error', error: parsed.error }, { status: 400 });
     }
-
-    const sessionId = session_id || 'default';
+    const { message } = parsed.data;
+    const sessionId = parsed.data.session_id || 'default';
     const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
     // Load conversation - try Neon first, fall back to in-memory

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { searchEntries } from '@/services/db/entries';
 import { getRelatedEntries } from '@/services/db/relations';
+import { validate, searchSchema } from '@/lib/validation';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -86,14 +87,11 @@ Examples:
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { query, summarize = true } = body;
-
-    if (!query || typeof query !== 'string') {
-      return NextResponse.json(
-        { status: 'error', error: 'Missing required field: query' },
-        { status: 400 }
-      );
+    const parsed = validate(searchSchema, body);
+    if (!parsed.success) {
+      return NextResponse.json({ status: 'error', error: parsed.error }, { status: 400 });
     }
+    const { query, summarize = true } = parsed.data;
 
     const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
 

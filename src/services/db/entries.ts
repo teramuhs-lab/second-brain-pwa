@@ -4,7 +4,7 @@
  * All reads and writes go directly to Neon.
  */
 
-import { eq, and, sql, ilike, desc, asc } from 'drizzle-orm';
+import { eq, and, sql, ilike, desc, asc, count } from 'drizzle-orm';
 import { db } from '@/db';
 import { entries, inboxLog, type NewEntry } from '@/db/schema';
 import { DEFAULT_STATUS } from '@/config/constants';
@@ -145,6 +145,26 @@ export async function queryEntries(filters: QueryFilters = {}) {
     .offset(filters.offset || 0);
 
   return results;
+}
+
+export async function countEntries(filters: Omit<QueryFilters, 'limit' | 'offset' | 'orderBy' | 'orderDir'> = {}) {
+  const conditions = [];
+  if (filters.category) conditions.push(eq(entries.category, filters.category));
+  if (filters.status) conditions.push(ilike(entries.status, filters.status));
+  if (filters.priority) conditions.push(eq(entries.priority, filters.priority));
+  if (filters.search) {
+    conditions.push(
+      sql`(${entries.title} ILIKE ${'%' + filters.search + '%'} OR ${entries.content}::text ILIKE ${'%' + filters.search + '%'})`
+    );
+  }
+  conditions.push(sql`${entries.archived} IS NULL`);
+
+  const [result] = await db
+    .select({ total: count() })
+    .from(entries)
+    .where(and(...conditions));
+
+  return result.total;
 }
 
 // ============= UPDATE =============

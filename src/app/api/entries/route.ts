@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { queryEntries } from '@/services/db/entries';
+import { queryEntries, countEntries } from '@/services/db/entries';
 
 /**
  * GET /api/entries?database=admin&status=Todo
@@ -36,13 +36,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const entries = await queryEntries({
-      category,
-      status,
-      orderBy: 'created_at',
-      orderDir: 'desc',
-      limit: 100,
-    });
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+    const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '50')));
+
+    const [entries, total] = await Promise.all([
+      queryEntries({
+        category,
+        status,
+        orderBy: 'created_at',
+        orderDir: 'desc',
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+      }),
+      countEntries({ category, status }),
+    ]);
 
     // Map to the frontend Entry shape
     const items = entries.map(entry => {
@@ -68,6 +75,10 @@ export async function GET(request: NextRequest) {
       status: 'ok',
       database,
       count: items.length,
+      total,
+      page,
+      pageSize,
+      hasMore: page * pageSize < total,
       items,
     });
   } catch (error) {

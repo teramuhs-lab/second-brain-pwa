@@ -1,4 +1,5 @@
 import type { CaptureResponse, UpdateResponse, Category, Entry, SearchResponse, AgentResponse, DigestResponse, DailyDigestResponse, WeeklyDigestResponse, UrlProcessResult, ResearchAgentResponse } from './types';
+import { addToQueue } from './offline-queue';
 
 // API endpoints (all local — no external dependencies)
 const ENDPOINTS = {
@@ -21,6 +22,20 @@ export async function captureThought(text: string, reminderDate?: string): Promi
 
     return await response.json();
   } catch (error) {
+    // Network error — save to offline queue
+    if (error instanceof TypeError && typeof indexedDB !== 'undefined') {
+      try {
+        await addToQueue(text, reminderDate);
+        return {
+          status: 'captured',
+          category: 'Admin',
+          confidence: 0,
+          offline: true,
+        } as CaptureResponse & { offline: boolean };
+      } catch {
+        // IndexedDB failed too
+      }
+    }
     console.error('Capture error:', error);
     return {
       status: 'error',

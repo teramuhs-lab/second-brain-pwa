@@ -3,8 +3,8 @@
 import { useState, useCallback, KeyboardEvent, useEffect } from 'react';
 import { searchEntries, markDone, snoozeEntry, updateEntry } from '@/lib/api';
 import type { SearchResult, Category, SavedSearch } from '@/lib/types';
-import { useToast } from '@/components/Toast';
-import { SearchDetailModal } from '@/components/SearchDetailModal';
+import { useToast } from '@/shared/components/Toast';
+import { SearchDetailModal } from '@/features/search/components/SearchDetailModal';
 import { formatRelativeDate } from '@/lib/utils/date';
 
 // Zen styling - muted, neutral colors
