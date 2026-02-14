@@ -1,28 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getEntry, getEntryByNotionId } from '@/services/db/entries';
 
-const NOTION_API_KEY = process.env.NOTION_API_KEY;
-
-interface NotionBlock {
-  type: string;
-  code?: {
-    language: string;
-    rich_text: Array<{ plain_text: string }>;
-  };
-}
-
-// Fetch a single entry's full details including structured summary
+// Fetch a single entry's full details from Neon
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!NOTION_API_KEY) {
-      return NextResponse.json(
-        { status: 'error', error: 'NOTION_API_KEY not configured' },
-        { status: 500 }
-      );
-    }
-
     const { id } = await context.params;
 
     if (!id) {
@@ -32,151 +16,66 @@ export async function GET(
       );
     }
 
-    // Fetch page details
-    const pageRes = await fetch(`https://api.notion.com/v1/pages/${id}`, {
-      headers: {
-        'Authorization': `Bearer ${NOTION_API_KEY}`,
-        'Notion-Version': '2022-06-28',
-      },
-    });
+    // Try Neon ID first, then Notion ID for backwards compatibility
+    let dbEntry = await getEntry(id);
+    if (!dbEntry) {
+      dbEntry = await getEntryByNotionId(id);
+    }
 
-    if (!pageRes.ok) {
-      const error = await pageRes.text();
+    if (!dbEntry) {
       return NextResponse.json(
-        { status: 'error', error: `Failed to fetch page: ${error}` },
-        { status: pageRes.status }
+        { status: 'error', error: 'Entry not found' },
+        { status: 404 }
       );
     }
 
-    const page = await pageRes.json();
+    const content = (dbEntry.content as Record<string, unknown>) || {};
 
-    // Extract properties
-    const props = page.properties || {};
-
-    // Helper to extract text from rich_text
-    const getText = (prop: unknown): string => {
-      const p = prop as { rich_text?: Array<{ plain_text: string }> } | undefined;
-      return p?.rich_text?.[0]?.plain_text || '';
+    // Determine entry type from category
+    const categoryMap: Record<string, string> = {
+      People: 'People',
+      Projects: 'Project',
+      Ideas: 'Idea',
+      Admin: 'Admin',
     };
+    const entryType = categoryMap[dbEntry.category] || dbEntry.category;
 
-    // Helper to extract title
-    const getTitle = (prop: unknown): string => {
-      const p = prop as { title?: Array<{ plain_text: string }> } | undefined;
-      return p?.title?.[0]?.plain_text || '';
-    };
-
-    // Helper to extract select
-    const getSelect = (prop: unknown): string => {
-      const p = prop as { select?: { name: string } } | undefined;
-      return p?.select?.name || '';
-    };
-
-    // Helper to extract date
-    const getDate = (prop: unknown): string | undefined => {
-      const p = prop as { date?: { start: string } } | undefined;
-      return p?.date?.start;
-    };
-
-    // Helper to extract URL
-    const getUrl = (prop: unknown): string => {
-      const p = prop as { url?: string } | undefined;
-      return p?.url || '';
-    };
-
-    // Determine entry type based on available properties
-    let entryType: 'Idea' | 'Admin' | 'Project' | 'People' = 'Idea';
-    let title = '';
-
-    if (props.Title) {
-      entryType = 'Idea';
-      title = getTitle(props.Title);
-    } else if (props.Task) {
-      entryType = 'Admin';
-      title = getTitle(props.Task);
-    } else if (props.Name) {
-      // Could be Project or People - check for project-specific fields
-      if (props['Next Action'] || props.Area) {
-        entryType = 'Project';
-      } else {
-        entryType = 'People';
-      }
-      title = getTitle(props.Name);
-    }
-
-    // Build base entry data
+    // Build response
     const entry: Record<string, unknown> = {
-      id: page.id,
-      title,
+      id: dbEntry.id,
+      title: dbEntry.title,
       type: entryType,
-      created_time: page.created_time,
-      last_edited_time: page.last_edited_time,
-      status: getSelect(props.Status),
-      priority: getSelect(props.Priority),
+      created_time: dbEntry.createdAt?.toISOString(),
+      last_edited_time: dbEntry.updatedAt?.toISOString(),
+      status: dbEntry.status,
+      priority: dbEntry.priority,
     };
 
-    // Add type-specific fields
+    // Add type-specific fields from content jsonb
     if (entryType === 'Idea') {
-      entry.one_liner = getText(props['One-liner']);
-      entry.raw_insight = getText(props['Raw Insight']);
-      entry.source = getUrl(props.Source);
-      entry.category = getSelect(props.Category);
-      entry.maturity = getSelect(props.Maturity);
-      entry.notes = getText(props.Notes);
+      entry.one_liner = content.oneLiner || '';
+      entry.raw_insight = content.rawInsight || '';
+      entry.source = content.source || '';
+      entry.category = content.ideaCategory || '';
+      entry.maturity = dbEntry.status || '';
+      entry.notes = content.notes || '';
+      entry.structured_summary = content.structuredSummary || undefined;
     } else if (entryType === 'Admin') {
-      entry.due_date = getDate(props['Due Date']);
-      entry.category = getSelect(props.Category);
-      entry.notes = getText(props.Notes);
+      entry.due_date = dbEntry.dueDate?.toISOString()?.split('T')[0];
+      entry.category = content.adminCategory || '';
+      entry.notes = content.notes || '';
     } else if (entryType === 'Project') {
-      entry.next_action = getText(props['Next Action']);
-      entry.due_date = getDate(props['Due Date']);
-      entry.area = getSelect(props.Area);
-      entry.notes = getText(props.Notes);
+      entry.next_action = content.nextAction || '';
+      entry.due_date = dbEntry.dueDate?.toISOString()?.split('T')[0];
+      entry.area = content.area || '';
+      entry.notes = content.notes || '';
     } else if (entryType === 'People') {
-      entry.company = getText(props.Company);
-      entry.role = getText(props.Role);
-      entry.context = getText(props.Context);
-      entry.last_contact = getDate(props['Last Contact']);
-      entry.next_followup = getDate(props['Next Follow-up']);
-      entry.notes = getText(props.Notes);
-    }
-
-    // For Ideas, also fetch page blocks to get structured summary JSON
-    if (entryType === 'Idea') {
-      try {
-        const blocksRes = await fetch(
-          `https://api.notion.com/v1/blocks/${id}/children?page_size=20`,
-          {
-            headers: {
-              'Authorization': `Bearer ${NOTION_API_KEY}`,
-              'Notion-Version': '2022-06-28',
-            },
-          }
-        );
-
-        if (blocksRes.ok) {
-          const blocks = await blocksRes.json();
-          // Find ALL JSON code blocks and concatenate them
-          const codeBlocks = (blocks.results as NotionBlock[])?.filter(
-            (b) => b.type === 'code' && b.code?.language === 'json'
-          ) || [];
-
-          if (codeBlocks.length > 0) {
-            const fullJson = codeBlocks
-              .map((b) => b.code?.rich_text?.[0]?.plain_text || '')
-              .join('');
-
-            if (fullJson) {
-              try {
-                entry.structured_summary = JSON.parse(fullJson);
-              } catch {
-                // JSON parse failed
-              }
-            }
-          }
-        }
-      } catch {
-        // Block fetch failed
-      }
+      entry.company = content.company || '';
+      entry.role = content.role || '';
+      entry.context = content.context || '';
+      entry.last_contact = content.lastContact || '';
+      entry.next_followup = dbEntry.dueDate?.toISOString()?.split('T')[0];
+      entry.notes = content.notes || '';
     }
 
     return NextResponse.json({

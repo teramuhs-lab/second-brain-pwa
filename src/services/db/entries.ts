@@ -1,15 +1,13 @@
 /**
- * Unified data service — dual-write to Neon + Notion
+ * Unified data service — Neon (Postgres) only
  *
- * All reads come from Neon (fast).
- * All writes go to Neon first, then Notion (best-effort backup).
+ * All reads and writes go directly to Neon.
  */
 
 import { eq, and, sql, ilike, desc, asc } from 'drizzle-orm';
 import { db } from '@/db';
 import { entries, inboxLog, type NewEntry } from '@/db/schema';
-import { createPage, updatePage, archivePage } from '@/services/notion/client';
-import { CATEGORY_DB_IDS, DEFAULT_STATUS, TITLE_PROPERTY, DATABASE_IDS } from '@/config/constants';
+import { DEFAULT_STATUS } from '@/config/constants';
 import { generateEmbedding, buildEmbeddingText } from './embeddings';
 
 // ============= Types =============
@@ -85,26 +83,7 @@ export async function createEntry(input: CreateEntryInput) {
     })
     .returning();
 
-  // 3. Dual-write to Notion (best-effort)
-  let notionPageId: string | null = null;
-  try {
-    const notionProps = buildNotionProperties(input);
-    const notionPage = await createPage(CATEGORY_DB_IDS[input.category], notionProps);
-    notionPageId = notionPage.id;
-
-    // Store Notion ID back in Neon for cross-referencing
-    await db
-      .update(entries)
-      .set({ notionId: notionPageId })
-      .where(eq(entries.id, neonEntry.id));
-  } catch (err) {
-    console.error('Notion dual-write failed (entry still saved in Neon):', err);
-  }
-
-  return {
-    ...neonEntry,
-    notionId: notionPageId,
-  };
+  return neonEntry;
 }
 
 // ============= READ =============
@@ -171,7 +150,6 @@ export async function queryEntries(filters: QueryFilters = {}) {
 // ============= UPDATE =============
 
 export async function updateEntry(id: string, input: UpdateEntryInput) {
-  // 1. Update Neon
   const updateData: Record<string, unknown> = {
     updatedAt: new Date(),
   };
@@ -214,41 +192,19 @@ export async function updateEntry(id: string, input: UpdateEntryInput) {
     }
   }
 
-  // 2. Dual-write to Notion (best-effort)
-  if (updated.notionId) {
-    try {
-      const notionProps = buildNotionUpdateProperties(updated.category, input);
-      await updatePage(updated.notionId, notionProps);
-    } catch (err) {
-      console.error('Notion dual-write update failed:', err);
-    }
-  }
-
   return updated;
 }
 
 // ============= ARCHIVE (soft delete) =============
 
 export async function archiveEntry(id: string) {
-  // 1. Soft-delete in Neon
   const [archived] = await db
     .update(entries)
     .set({ archived: new Date() })
     .where(eq(entries.id, id))
     .returning();
 
-  if (!archived) return null;
-
-  // 2. Archive in Notion (best-effort)
-  if (archived.notionId) {
-    try {
-      await archivePage(archived.notionId);
-    } catch (err) {
-      console.error('Notion archive failed:', err);
-    }
-  }
-
-  return archived;
+  return archived || null;
 }
 
 // ============= SEARCH (vector + keyword) =============
@@ -322,7 +278,6 @@ export async function createInboxLogEntry(data: {
   destinationId?: string;
   status?: string;
 }) {
-  // 1. Insert into Neon
   const [logEntry] = await db
     .insert(inboxLog)
     .values({
@@ -334,171 +289,5 @@ export async function createInboxLogEntry(data: {
     })
     .returning();
 
-  // 2. Dual-write to Notion (best-effort)
-  try {
-    const notionPage = await createPage(DATABASE_IDS.InboxLog, {
-      'Raw Input': {
-        title: [{ text: { content: data.rawInput } }],
-      },
-      Category: {
-        select: { name: data.category },
-      },
-      Confidence: {
-        number: data.confidence,
-      },
-      'Destination ID': {
-        rich_text: [{ text: { content: data.destinationId || '' } }],
-      },
-      Status: {
-        select: { name: data.status || 'Processed' },
-      },
-    });
-
-    // Store Notion ID
-    await db
-      .update(inboxLog)
-      .set({ notionId: notionPage.id })
-      .where(eq(inboxLog.id, logEntry.id));
-  } catch (err) {
-    console.error('Notion inbox log dual-write failed:', err);
-  }
-
   return logEntry;
-}
-
-// ============= Notion property builders =============
-
-function buildNotionProperties(input: CreateEntryInput): Record<string, unknown> {
-  const titleProp = TITLE_PROPERTY[input.category];
-  const defaultStatus = DEFAULT_STATUS[input.category];
-
-  const properties: Record<string, unknown> = {
-    [titleProp]: {
-      title: [{ text: { content: input.title.slice(0, 100) } }],
-    },
-  };
-
-  // Status/Maturity
-  if (input.category === 'Idea') {
-    properties['Maturity'] = { select: { name: input.status || defaultStatus } };
-  } else {
-    properties['Status'] = { select: { name: input.status || defaultStatus } };
-  }
-
-  // Priority
-  if (input.priority && (input.category === 'Admin' || input.category === 'Project')) {
-    properties['Priority'] = { select: { name: input.priority } };
-  }
-
-  // Due date
-  if (input.dueDate) {
-    if (input.category === 'People') {
-      properties['Next Follow-up'] = { date: { start: input.dueDate } };
-    } else {
-      properties['Due Date'] = { date: { start: input.dueDate } };
-    }
-  }
-
-  // Category-specific content fields
-  const content = input.content || {};
-
-  if (input.category === 'Admin') {
-    if (content.notes) {
-      properties['Notes'] = { rich_text: [{ text: { content: String(content.notes) } }] };
-    }
-    if (content.adminCategory) {
-      properties['Category'] = { select: { name: String(content.adminCategory) } };
-    }
-  } else if (input.category === 'Project') {
-    if (content.nextAction) {
-      properties['Next Action'] = { rich_text: [{ text: { content: String(content.nextAction) } }] };
-    }
-    if (content.area) {
-      properties['Area'] = { select: { name: String(content.area) } };
-    }
-    if (content.notes) {
-      properties['Notes'] = { rich_text: [{ text: { content: String(content.notes) } }] };
-    }
-  } else if (input.category === 'Idea') {
-    if (content.rawInsight) {
-      properties['Raw Insight'] = { rich_text: [{ text: { content: String(content.rawInsight).slice(0, 2000) } }] };
-    }
-    if (content.oneLiner) {
-      properties['One-liner'] = { rich_text: [{ text: { content: String(content.oneLiner) } }] };
-    }
-    if (content.source) {
-      properties['Source'] = { url: String(content.source) };
-    }
-    if (content.ideaCategory) {
-      properties['Category'] = { select: { name: String(content.ideaCategory) } };
-    }
-  } else if (input.category === 'People') {
-    if (content.company) {
-      properties['Company'] = { rich_text: [{ text: { content: String(content.company) } }] };
-    }
-    if (content.role) {
-      properties['Role'] = { rich_text: [{ text: { content: String(content.role) } }] };
-    }
-    if (content.context) {
-      properties['Context'] = { rich_text: [{ text: { content: String(content.context) } }] };
-    }
-    if (content.lastContact) {
-      properties['Last Contact'] = { date: { start: String(content.lastContact) } };
-    }
-  }
-
-  return properties;
-}
-
-function buildNotionUpdateProperties(
-  category: string,
-  input: UpdateEntryInput
-): Record<string, unknown> {
-  const properties: Record<string, unknown> = {};
-
-  if (input.status !== undefined) {
-    if (category === 'Ideas') {
-      properties['Maturity'] = { select: { name: input.status } };
-    } else {
-      properties['Status'] = { select: { name: input.status } };
-    }
-  }
-
-  if (input.priority !== undefined) {
-    properties['Priority'] = { select: { name: input.priority } };
-  }
-
-  if (input.dueDate !== undefined) {
-    if (category === 'People') {
-      properties['Next Follow-up'] = input.dueDate ? { date: { start: input.dueDate } } : null;
-    } else {
-      properties['Due Date'] = input.dueDate ? { date: { start: input.dueDate } } : null;
-    }
-  }
-
-  if (input.content) {
-    for (const [key, value] of Object.entries(input.content)) {
-      if (typeof value !== 'string' || !value) continue;
-
-      // Map content keys to Notion property names
-      const fieldMap: Record<string, string> = {
-        notes: 'Notes',
-        nextAction: 'Next Action',
-        rawInsight: 'Raw Insight',
-        oneLiner: 'One-liner',
-        context: 'Context',
-        company: 'Company',
-        role: 'Role',
-      };
-
-      const notionField = fieldMap[key];
-      if (notionField) {
-        properties[notionField] = {
-          rich_text: [{ text: { content: value.slice(0, 2000) } }],
-        };
-      }
-    }
-  }
-
-  return properties;
 }
