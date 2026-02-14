@@ -201,7 +201,7 @@ export async function searchEntries(
       query,
       total: 0,
       results: [],
-      grouped: { People: 0, Project: 0, Idea: 0, Admin: 0 },
+      grouped: { People: 0, Project: 0, Idea: 0, Admin: 0, Reading: 0 },
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
@@ -426,11 +426,41 @@ export function extractUrl(text: string): string | null {
   return match ? match[0] : null;
 }
 
-// Save research result (Ideas or Admin)
+// Save a reading entry (from URL preview)
+export async function saveReading(data: {
+  title: string;
+  url: string;
+  oneLiner?: string;
+  tldr?: string;
+  category?: string;
+  structuredSummary?: Record<string, unknown>;
+}): Promise<{ status: 'success' | 'error'; pageId?: string; error?: string }> {
+  try {
+    const response = await fetch('/api/save-reading', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Save reading error:', error);
+    return {
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Failed to save reading entry',
+    };
+  }
+}
+
+// Save research result (Ideas, Admin, or Reading)
 export async function saveResearchResult(data: {
   question: string;
   answer: string;
-  category: 'Idea' | 'Admin';
+  category: 'Idea' | 'Admin' | 'Reading';
   citations?: Array<{
     title: string;
     type: string;

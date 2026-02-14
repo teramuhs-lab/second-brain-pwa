@@ -65,11 +65,12 @@ export function ConfirmCard({
     low: 'text-[var(--accent-red)]',
   }[confidenceLevel];
 
-  const categoryIcon = {
+  const categoryIcon: string = {
     People: '👤',
     Project: '🚀',
     Idea: '💡',
     Admin: '📋',
+    Reading: '📖',
   }[category];
 
   return (

@@ -86,7 +86,7 @@ export default function AskPage() {
   // Save a research result
   const handleSaveMessage = useCallback(async (
     message: Message,
-    category: 'Idea' | 'Admin'
+    category: 'Idea' | 'Admin' | 'Reading'
   ) => {
     if (!message.question) return;
 

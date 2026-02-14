@@ -26,8 +26,8 @@ export const searchSchema = z.object({
 export const recategorizeSchema = z.object({
   page_id: z.string().min(1, 'Entry ID is required'),
   current_category: z.string().optional(),
-  new_category: z.enum(['People', 'Project', 'Idea', 'Admin'], {
-    error: 'Category must be People, Project, Idea, or Admin',
+  new_category: z.enum(['People', 'Project', 'Idea', 'Admin', 'Reading'], {
+    error: 'Category must be People, Project, Idea, Admin, or Reading',
   }),
   raw_text: z.string().min(1, 'Raw text is required'),
 });
@@ -40,7 +40,7 @@ export const agentSchema = z.object({
 export const saveResearchSchema = z.object({
   question: z.string().min(1, 'Question is required').max(500),
   answer: z.string().min(1, 'Answer is required').max(10000),
-  category: z.enum(['Idea', 'Admin']),
+  category: z.enum(['Idea', 'Admin', 'Reading']),
   citations: z.array(z.object({
     title: z.string(),
     type: z.string(),
@@ -52,6 +52,15 @@ export const saveResearchSchema = z.object({
 
 export const processUrlSchema = z.object({
   url: z.string().url('Invalid URL format'),
+});
+
+export const saveReadingSchema = z.object({
+  title: z.string().min(1, 'Title is required').max(200),
+  url: z.string().url('Invalid URL format'),
+  oneLiner: z.string().max(500).optional(),
+  tldr: z.string().max(5000).optional(),
+  category: z.string().max(50).optional(),
+  structuredSummary: z.record(z.string(), z.unknown()).optional(),
 });
 
 /** Helper to validate and return typed result or error response */

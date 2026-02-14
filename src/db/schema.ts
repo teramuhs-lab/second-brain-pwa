@@ -80,6 +80,20 @@ export const chatSessions = pgTable('chat_sessions', {
   uniqueIndex('chat_sessions_session_id_idx').on(table.sessionId),
 ]);
 
+// ============= Activity Log =============
+// Tracks user actions for AI context (status changes, snoozes, completions, etc.)
+export const activityLog = pgTable('activity_log', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  entryId: uuid('entry_id').references(() => entries.id, { onDelete: 'set null' }),
+  action: text('action').notNull(), // 'created' | 'status_changed' | 'snoozed' | 'completed' | 'archived' | 'recategorized' | 'note_added' | 'saved_reading' | 'searched'
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index('activity_log_entry_id_idx').on(table.entryId),
+  index('activity_log_action_idx').on(table.action),
+  index('activity_log_created_at_idx').on(table.createdAt),
+]);
+
 // ============= Config =============
 // Key-value store for Google tokens, settings, etc.
 export const config = pgTable('config', {
@@ -97,6 +111,7 @@ export type NewEntry = typeof entries.$inferInsert;
 export type EntryRelation = typeof entryRelations.$inferSelect;
 export type NewEntryRelation = typeof entryRelations.$inferInsert;
 export type InboxLogEntry = typeof inboxLog.$inferSelect;
+export type ActivityLogEntry = typeof activityLog.$inferSelect;
 export type ChatSession = typeof chatSessions.$inferSelect;
 export type ConfigEntry = typeof config.$inferSelect;
 

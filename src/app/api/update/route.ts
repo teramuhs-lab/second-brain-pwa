@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateEntry, getEntryByLegacyId } from '@/services/db/entries';
+import { updateEntry, getEntry, getEntryByLegacyId } from '@/services/db/entries';
 import type { UpdateEntryInput } from '@/services/db/entries';
+import { logActivity } from '@/services/db/activity';
 import { validate, updateSchema } from '@/lib/validation';
 
 // Map frontend field keys to Neon content keys
@@ -26,8 +27,8 @@ export async function POST(request: NextRequest) {
     }
     const { page_id, updates } = parsed.data;
 
-    // Find entry by ID
-    const entry = await getEntryByLegacyId(page_id);
+    // Find entry by UUID first, then fall back to legacy Notion ID
+    const entry = await getEntry(page_id) || await getEntryByLegacyId(page_id);
     if (!entry) {
       return NextResponse.json(
         { status: 'error', error: 'Entry not found in database' },
@@ -64,6 +65,17 @@ export async function POST(request: NextRequest) {
         { status: 'error', error: 'Failed to update entry' },
         { status: 500 }
       );
+    }
+
+    // Log activity based on what changed
+    if (updateInput.status !== undefined) {
+      logActivity(entry.id, 'status_changed', { from: entry.status, to: updateInput.status });
+    }
+    if (updateInput.dueDate !== undefined) {
+      logActivity(entry.id, 'snoozed', { to: updateInput.dueDate });
+    }
+    if (Object.keys(contentUpdates).length > 0) {
+      logActivity(entry.id, 'note_added', { fields: Object.keys(contentUpdates) });
     }
 
     return NextResponse.json({

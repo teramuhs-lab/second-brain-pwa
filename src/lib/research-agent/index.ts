@@ -6,7 +6,7 @@ import { CitationTracker, Citation } from './citations';
 import { detectDomainHybrid, getResearchSystemPrompt, ExpertDomain, classifyQueryIntent, CASUAL_SYSTEM_PROMPT, FOLLOW_UP_SYSTEM_PROMPT } from './personas';
 import { searchWeb, isWebSearchAvailable, SearchFocus } from './web-search';
 import { researchAgentTools } from '@/lib/agent-tools/definitions';
-import { searchBrainEntries, getItemDetailsCore } from '@/lib/agent-tools/handlers';
+import { searchBrainEntries, getItemDetailsCore, getRecentActivityCore } from '@/lib/agent-tools/handlers';
 import { isGoogleConnected } from '@/services/google/auth';
 import { fetchTodaysEvents, fetchTomorrowsEvents, fetchWeekEvents, createCalendarEvent, deleteCalendarEvent } from '@/services/google/calendar';
 import { searchEmails as searchGmail, getEmailDetail } from '@/services/google/gmail';
@@ -453,6 +453,23 @@ export async function runResearchLoop(
         case 'delete_calendar_event':
           toolResult = await handleDeleteCalendarEvent(args.event_id, args.calendar_id);
           break;
+        case 'get_recent_activity': {
+          const validPeriod = (['today', 'this_week', 'this_month'] as const).includes(args.period)
+            ? args.period : 'this_week';
+          const activity = await getRecentActivityCore(validPeriod, args.action_filter);
+          const lines: string[] = [`Activity (${validPeriod}): ${activity.totalActions} actions`];
+          for (const [action, count] of Object.entries(activity.summary)) {
+            lines.push(`  ${action}: ${count}`);
+          }
+          if (activity.recentActions.length > 0) {
+            lines.push('\nRecent:');
+            for (const a of activity.recentActions.slice(0, 10)) {
+              lines.push(`- ${a.action}${a.title ? `: ${a.title}` : ''}${a.category ? ` (${a.category})` : ''}`);
+            }
+          }
+          toolResult = { result: lines.join('\n'), citations: [] };
+          break;
+        }
         default:
           toolResult = { result: `Unknown tool: ${toolName}`, citations: [] };
       }

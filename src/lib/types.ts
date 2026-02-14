@@ -1,11 +1,12 @@
 // Database types
-export type Category = 'People' | 'Project' | 'Idea' | 'Admin';
+export type Category = 'People' | 'Project' | 'Idea' | 'Admin' | 'Reading';
 
 export type AdminStatus = 'Todo' | 'Done';
 export type ProjectStatus = 'Not Started' | 'Active' | 'Waiting' | 'Complete';
 export type PeopleStatus = 'New' | 'Active' | 'Dormant';
 export type Priority = 'High' | 'Medium' | 'Low';
 export type IdeaMaturity = 'Spark' | 'Developing' | 'Actionable';
+export type ReadingStatus = 'Unread' | 'Read';
 
 // API Response types
 export interface CaptureResponse {
@@ -66,6 +67,7 @@ export interface SearchResponse {
     Project: number;
     Idea: number;
     Admin: number;
+    Reading: number;
   };
   error?: string;
 }

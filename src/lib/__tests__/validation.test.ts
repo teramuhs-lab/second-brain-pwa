@@ -9,6 +9,7 @@ import {
   agentSchema,
   saveResearchSchema,
   processUrlSchema,
+  saveReadingSchema,
 } from '../validation';
 
 describe('captureSchema', () => {
@@ -130,6 +131,15 @@ describe('recategorizeSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('accepts Reading as new_category', () => {
+    const result = validate(recategorizeSchema, {
+      page_id: 'abc',
+      new_category: 'Reading',
+      raw_text: 'Save this article',
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe('agentSchema', () => {
@@ -164,6 +174,50 @@ describe('saveResearchSchema', () => {
       question: 'test',
       answer: 'test',
       category: 'People',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts Reading as category', () => {
+    const result = validate(saveResearchSchema, {
+      question: 'What is vector search?',
+      answer: 'Vector search is a method...',
+      category: 'Reading',
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('saveReadingSchema', () => {
+  it('accepts valid reading data', () => {
+    const result = validate(saveReadingSchema, {
+      title: 'Understanding Vector Databases',
+      url: 'https://example.com/article',
+      oneLiner: 'A guide to vector DBs',
+      category: 'Tech',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts minimal reading data', () => {
+    const result = validate(saveReadingSchema, {
+      title: 'Test Article',
+      url: 'https://example.com',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects missing title', () => {
+    const result = validate(saveReadingSchema, {
+      url: 'https://example.com',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects invalid URL', () => {
+    const result = validate(saveReadingSchema, {
+      title: 'Test',
+      url: 'not-a-url',
     });
     expect(result.success).toBe(false);
   });

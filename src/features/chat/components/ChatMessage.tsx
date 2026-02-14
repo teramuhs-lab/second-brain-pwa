@@ -12,7 +12,7 @@ interface ChatMessageProps {
   researchSteps?: ResearchStep[];
   expertDomain?: string;
   // Save functionality
-  onSave?: (category: 'Idea' | 'Admin') => Promise<void>;
+  onSave?: (category: 'Idea' | 'Admin' | 'Reading') => Promise<void>;
   question?: string; // The original question (for saving context)
 }
 
@@ -83,7 +83,7 @@ export function ChatMessage({
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
-  const handleSave = async (category: 'Idea' | 'Admin') => {
+  const handleSave = async (category: 'Idea' | 'Admin' | 'Reading') => {
     if (!onSave) return;
     setIsSaving(true);
     setShowSaveMenu(false);
@@ -319,6 +319,13 @@ export function ChatMessage({
                   >
                     <span className="text-base">📋</span>
                     Save as Task
+                  </button>
+                  <button
+                    onClick={() => handleSave('Reading')}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-surface)]"
+                  >
+                    <span className="text-base">📖</span>
+                    Save as Reading
                   </button>
                 </div>
               )}

@@ -185,6 +185,30 @@ export const getEmailTool: OpenAI.ChatCompletionTool = {
   },
 };
 
+export const getRecentActivityTool: OpenAI.ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'get_recent_activity',
+    description: `See what the user has been doing recently — status changes, captures, snoozes, completions, searches. Use when user asks "what have I been working on?", "my recent activity", "what did I do this week?", or when you need behavioral context.`,
+    parameters: {
+      type: 'object',
+      properties: {
+        period: {
+          type: 'string',
+          enum: ['today', 'this_week', 'this_month'],
+          description: 'Time period to look at',
+        },
+        action_filter: {
+          type: 'string',
+          enum: ['created', 'status_changed', 'snoozed', 'completed', 'archived', 'recategorized', 'note_added', 'saved_reading', 'searched'],
+          description: 'Filter to a specific action type. Omit for all actions.',
+        },
+      },
+      required: ['period'],
+    },
+  },
+};
+
 export const searchWebTool: OpenAI.ChatCompletionTool = {
   type: 'function',
   function: {
@@ -230,6 +254,7 @@ export const agentTools: OpenAI.ChatCompletionTool[] = [
   getItemDetailsTool,
   createTaskTool,
   saveIdeaTool,
+  getRecentActivityTool,
   readCalendarTool,
   createCalendarEventTool,
   deleteCalendarEventTool,
@@ -243,6 +268,7 @@ export const researchAgentTools: OpenAI.ChatCompletionTool[] = [
   searchBrainTool,
   searchWebTool,
   getItemDetailsTool,
+  getRecentActivityTool,
   finalizeResearchTool,
   readCalendarTool,
   createCalendarEventTool,

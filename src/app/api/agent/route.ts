@@ -3,7 +3,7 @@ import OpenAI from 'openai';
 import { createEntry } from '@/services/db/entries';
 import { agentTools } from '@/lib/agent-tools/definitions';
 import { validate, agentSchema } from '@/lib/validation';
-import { searchBrainEntries, getItemDetailsCore } from '@/lib/agent-tools/handlers';
+import { searchBrainEntries, getItemDetailsCore, getRecentActivityCore } from '@/lib/agent-tools/handlers';
 import { isGoogleConnected } from '@/services/google/auth';
 import { fetchTodaysEvents, fetchTomorrowsEvents, fetchWeekEvents, createCalendarEvent, deleteCalendarEvent } from '@/services/google/calendar';
 import { searchEmails as searchGmail, getEmailDetail } from '@/services/google/gmail';
@@ -119,6 +119,38 @@ async function saveIdea(
     return JSON.stringify({
       success: false,
       error: `Failed to save idea: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
+async function getRecentActivity(period: string, actionFilter?: string): Promise<string> {
+  try {
+    const validPeriod = (['today', 'this_week', 'this_month'] as const).includes(period as 'today' | 'this_week' | 'this_month')
+      ? (period as 'today' | 'this_week' | 'this_month')
+      : 'this_week';
+
+    const result = await getRecentActivityCore(validPeriod, actionFilter);
+
+    if (result.totalActions === 0) {
+      return JSON.stringify({
+        success: true,
+        message: `No activity found for ${validPeriod.replace('_', ' ')}.`,
+        summary: {},
+        actions: [],
+      });
+    }
+
+    return JSON.stringify({
+      success: true,
+      period: validPeriod,
+      total: result.totalActions,
+      summary: result.summary,
+      recent_actions: result.recentActions.slice(0, 15),
+    });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: `Failed to fetch activity: ${error instanceof Error ? error.message : 'Unknown error'}`,
     });
   }
 }
@@ -326,6 +358,8 @@ async function handleToolCall(
       return await createTask(args.title as string, args.priority as string | undefined, args.due_date as string | undefined);
     case 'save_idea':
       return await saveIdea(args.title as string, args.insight as string, args.category as string | undefined);
+    case 'get_recent_activity':
+      return await getRecentActivity(args.period as string, args.action_filter as string | undefined);
     case 'read_calendar':
       return await readCalendar(args.period as string);
     case 'create_calendar_event':
@@ -354,6 +388,7 @@ You have access to these tools:
 - **get_item_details**: Get full details of a specific item
 - **create_task**: Create new tasks/reminders
 - **save_idea**: Save insights as new Ideas
+- **get_recent_activity**: See what the user has been doing recently (captures, status changes, snoozes, completions)
 - **read_calendar**: Check Google Calendar events for today, tomorrow, or this week
 - **create_calendar_event**: Schedule a new calendar event (always check availability first with read_calendar)
 - **delete_calendar_event**: Delete/remove a calendar event by ID (use read_calendar first to find the event)
@@ -367,6 +402,7 @@ You have access to these tools:
    - Email, messages, inbox, "emails from..." → use **search_emails**
    - Schedule/create a meeting or event → use **read_calendar** first (check availability), then **create_calendar_event**
    - Remove/delete/cancel an event → use **read_calendar** first (find the event ID), then **delete_calendar_event**
+   - "What have I been working on?", "my recent activity", productivity, behavior patterns → use **get_recent_activity**
    - People, projects, ideas, tasks, topics stored in the brain → use **search_brain** first
    - Current events, external knowledge, general questions, fact-checking → use **search_web**
    - If brain search returns no results and the question could benefit from web info → use **search_web** as fallback

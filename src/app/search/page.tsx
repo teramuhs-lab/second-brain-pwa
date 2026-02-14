@@ -13,6 +13,7 @@ const CATEGORY_COLORS: Record<Category, string> = {
   Project: 'bg-[var(--bg-elevated)]',
   Idea: 'bg-[var(--bg-elevated)]',
   Admin: 'bg-[var(--bg-elevated)]',
+  Reading: 'bg-[var(--bg-elevated)]',
 };
 
 // Priority dots instead of badges

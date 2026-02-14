@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { queryEntries } from '@/services/db/entries';
+import { getActivitySummary, getFrequentlySnoozed } from '@/services/db/activity';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -138,10 +139,42 @@ export async function GET() {
       }
     }
 
+    // Fetch activity data (best-effort)
+    let activitySummary: Record<string, number> = {};
+    let snoozedItems: Array<{ title: string; snoozeCount: number }> = [];
+    try {
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const [summaryArr, snoozedArr] = await Promise.all([
+        getActivitySummary(oneWeekAgo),
+        getFrequentlySnoozed(thirtyDaysAgo, 3),
+      ]);
+      for (const s of summaryArr) {
+        activitySummary[s.action] = s.count;
+      }
+      snoozedItems = snoozedArr.map(i => ({ title: i.entryTitle || 'Unknown', snoozeCount: i.snoozeCount }));
+    } catch {
+      // Activity data is optional
+    }
+
     // Generate AI insights
     let aiInsights: string | null = null;
     if (OPENAI_API_KEY && (weeklyStats.totalCaptures > 0 || staleItems.length > 0 || dueToday.length > 0)) {
       const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+
+      // Build activity context
+      let activityContext = '';
+      if (Object.keys(activitySummary).length > 0) {
+        activityContext += '\nUSER ACTIONS THIS WEEK:\n';
+        for (const [action, count] of Object.entries(activitySummary)) {
+          activityContext += `- ${count} ${action.replace('_', ' ')}${count > 1 ? 's' : ''}\n`;
+        }
+      }
+      if (snoozedItems.length > 0) {
+        activityContext += '\nFREQUENTLY SNOOZED (past 30 days, likely stuck):\n';
+        for (const item of snoozedItems) {
+          activityContext += `- "${item.title}" — snoozed ${item.snoozeCount} times\n`;
+        }
+      }
 
       try {
         const completion = await openai.chat.completions.create({
@@ -162,7 +195,7 @@ ${dueToday.length > 0 ? dueToday.map(i => `- "${i.title}" (${i.category}${i.time
 WEEKLY STATS:
 - Captured: ${weeklyStats.totalCaptures} items (People: ${weeklyStats.byCategory.People || 0}, Projects: ${weeklyStats.byCategory.Projects || 0}, Ideas: ${weeklyStats.byCategory.Ideas || 0}, Tasks: ${weeklyStats.byCategory.Admin || 0})
 - Completed: ${weeklyStats.completedTasks} tasks
-
+${activityContext}
 STALE ITEMS (untouched 2+ weeks):
 ${staleItems.length > 0 ? staleItems.slice(0, 5).map(s => `- "${s.title}" (${s.category}, ${s.daysSinceEdit} days idle)`).join('\n') : '- None'}
 
@@ -170,8 +203,8 @@ RECENT THEMES: ${recentTexts.slice(0, 10).join(' ').slice(0, 400)}
 
 Give exactly 3 insights:
 1. **Priority**: What should I focus on right now and why? (name specific items)
-2. **Stale**: Which idle item should I complete, archive, or revisit first?
-3. **Pattern**: One observation about my focus or momentum this week.
+2. **Stale**: Which idle item should I complete, archive, or revisit first? If any items have been snoozed many times, call them out as potentially stuck.
+3. **Pattern**: One observation about my focus or momentum this week based on the activity data.
 
 Be direct and specific. Under 100 words.`,
             },

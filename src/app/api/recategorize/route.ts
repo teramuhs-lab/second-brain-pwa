@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createEntry, archiveEntry, getEntryByLegacyId, createInboxLogEntry } from '@/services/db/entries';
+import { createEntry, archiveEntry, getEntry, getEntryByLegacyId, createInboxLogEntry } from '@/services/db/entries';
+import { logActivity } from '@/services/db/activity';
 import { validate, recategorizeSchema } from '@/lib/validation';
 
-type Category = 'People' | 'Project' | 'Idea' | 'Admin';
+type Category = 'People' | 'Project' | 'Idea' | 'Admin' | 'Reading';
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest) {
 
     // Step 1: Archive the old entry
     try {
-      const oldEntry = await getEntryByLegacyId(page_id);
+      const oldEntry = await getEntry(page_id) || await getEntryByLegacyId(page_id);
       if (oldEntry) {
         await archiveEntry(oldEntry.id);
       }
@@ -33,6 +34,8 @@ export async function POST(request: NextRequest) {
       content.ideaCategory = 'Life';
     } else if (new_category === 'People') {
       content.lastContact = new Date().toISOString().split('T')[0];
+    } else if (new_category === 'Reading') {
+      content.ideaCategory = 'Tech';
     }
 
     // Step 3: Create new entry
@@ -55,6 +58,9 @@ export async function POST(request: NextRequest) {
     } catch (logError) {
       console.error('Failed to log to Inbox Log:', logError);
     }
+
+    // Log activity
+    logActivity(newEntry.id, 'recategorized', { from: current_category, to: new_category });
 
     return NextResponse.json({
       status: 'fixed',

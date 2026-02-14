@@ -4,6 +4,7 @@ import { isGoogleConnected } from '@/services/google/auth';
 import { fetchTodaysEvents } from '@/services/google/calendar';
 import type { CalendarEvent } from '@/services/google/types';
 import { queryEntries } from '@/services/db/entries';
+import { getActivitySummary, getFrequentlySnoozed, getMostActiveEntries } from '@/services/db/activity';
 import { gte } from 'drizzle-orm';
 import { db } from '@/db';
 import { inboxLog } from '@/db/schema';
@@ -151,7 +152,8 @@ async function generateDailySummary(
   projects: DigestItem[],
   tasks: DigestItem[],
   followups: DigestItem[],
-  calendarEvents: CalendarEvent[] = []
+  calendarEvents: CalendarEvent[] = [],
+  activitySummary?: Record<string, number>
 ): Promise<string> {
   if (!OPENAI_API_KEY) {
     return 'AI summary unavailable - OpenAI not configured';
@@ -162,6 +164,16 @@ async function generateDailySummary(
   }
 
   let summary = '';
+
+  // Activity context from past 24h
+  if (activitySummary && Object.keys(activitySummary).length > 0) {
+    summary += 'YESTERDAY\'S ACTIVITY:\n';
+    for (const [action, count] of Object.entries(activitySummary)) {
+      const label = action.replace('_', ' ');
+      summary += `- ${count} ${label}${count > 1 ? 's' : ''}\n`;
+    }
+    summary += '\n';
+  }
 
   if (calendarEvents.length > 0) {
     summary += 'CALENDAR TODAY:\n';
@@ -228,7 +240,8 @@ async function generateWeeklySummary(
   completedTasks: DigestItem[],
   completedProjects: DigestItem[],
   inboxByCategory: Record<string, DigestItem[]>,
-  totalInbox: number
+  totalInbox: number,
+  weeklyActivity?: { summary: Record<string, number>; snoozedItems: Array<{ title: string; snoozeCount: number }>; mostActive: Array<{ title: string; category: string; actionCount: number }> }
 ): Promise<string> {
   if (!OPENAI_API_KEY) {
     return 'AI summary unavailable - OpenAI not configured';
@@ -240,6 +253,33 @@ async function generateWeeklySummary(
   }
 
   let summary = `WEEK DATA (${totalInbox} new entries captured):\n\n`;
+
+  // Activity summary for the week
+  if (weeklyActivity?.summary && Object.keys(weeklyActivity.summary).length > 0) {
+    summary += 'USER ACTIVITY THIS WEEK:\n';
+    for (const [action, count] of Object.entries(weeklyActivity.summary)) {
+      summary += `- ${count} ${action.replace('_', ' ')}${count > 1 ? 's' : ''}\n`;
+    }
+    summary += '\n';
+  }
+
+  // Frequently snoozed items (stuck items)
+  if (weeklyActivity?.snoozedItems && weeklyActivity.snoozedItems.length > 0) {
+    summary += 'FREQUENTLY SNOOZED (possibly stuck):\n';
+    for (const item of weeklyActivity.snoozedItems) {
+      summary += `- "${item.title}" — snoozed ${item.snoozeCount} times\n`;
+    }
+    summary += '\n';
+  }
+
+  // Most active entries
+  if (weeklyActivity?.mostActive && weeklyActivity.mostActive.length > 0) {
+    summary += 'MOST INTERACTED ENTRIES:\n';
+    for (const item of weeklyActivity.mostActive) {
+      summary += `- "${item.title}" (${item.category}) — ${item.actionCount} actions\n`;
+    }
+    summary += '\n';
+  }
 
   if (completedTasks.length > 0 || completedProjects.length > 0) {
     summary += 'COMPLETED THIS WEEK:\n';
@@ -313,8 +353,18 @@ export async function GET(request: NextRequest) {
     const type = request.nextUrl.searchParams.get('type') || 'daily';
 
     if (type === 'daily') {
-      const { projects, tasks, followups, calendarEvents } = await fetchDailyData();
-      const aiSummary = await generateDailySummary(projects, tasks, followups, calendarEvents);
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const [dailyData, activityArr] = await Promise.all([
+        fetchDailyData(),
+        getActivitySummary(yesterday).catch(() => []),
+      ]);
+      const { projects, tasks, followups, calendarEvents } = dailyData;
+      // Convert ActivitySummary[] to Record<string, number>
+      const activitySummary: Record<string, number> = {};
+      for (const s of activityArr) {
+        if (s && typeof s === 'object' && 'action' in s) activitySummary[s.action] = s.count;
+      }
+      const aiSummary = await generateDailySummary(projects, tasks, followups, calendarEvents, activitySummary);
 
       return NextResponse.json({
         status: 'success',
@@ -329,13 +379,29 @@ export async function GET(request: NextRequest) {
         aiSummary,
       });
     } else {
-      const { completedTasks, completedProjects, inboxByCategory, totalInbox } =
-        await fetchWeeklyData();
+      const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const [weeklyData, actSummaryArr, snoozedItems, mostActive] = await Promise.all([
+        fetchWeeklyData(),
+        getActivitySummary(oneWeekAgo).catch(() => []),
+        getFrequentlySnoozed(oneWeekAgo, 2).catch(() => []),
+        getMostActiveEntries(oneWeekAgo, 5).catch(() => []),
+      ]);
+      const { completedTasks, completedProjects, inboxByCategory, totalInbox } = weeklyData;
+      // Convert ActivitySummary[] to Record<string, number>
+      const actSummary: Record<string, number> = {};
+      for (const s of actSummaryArr) {
+        if (s && typeof s === 'object' && 'action' in s) actSummary[s.action] = s.count;
+      }
       const aiSummary = await generateWeeklySummary(
         completedTasks,
         completedProjects,
         inboxByCategory,
-        totalInbox
+        totalInbox,
+        {
+          summary: actSummary,
+          snoozedItems: snoozedItems.map(s => ({ title: s.entryTitle || 'Unknown', snoozeCount: s.snoozeCount })),
+          mostActive: mostActive.map(a => ({ title: a.entryTitle || 'Unknown', category: a.entryCategory || 'Unknown', actionCount: a.activityCount })),
+        }
       );
 
       return NextResponse.json({

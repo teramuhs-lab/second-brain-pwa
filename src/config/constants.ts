@@ -4,4 +4,5 @@ export const DEFAULT_STATUS: Record<string, string> = {
   Project: 'Active',
   Idea: 'Spark',
   Admin: 'Todo',
+  Reading: 'Unread',
 };

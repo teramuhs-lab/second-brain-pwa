@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createEntry } from '@/services/db/entries';
+import { logActivity } from '@/services/db/activity';
 import { validate, saveResearchSchema } from '@/lib/validation';
 
 export async function POST(request: NextRequest) {
@@ -31,6 +32,10 @@ export async function POST(request: NextRequest) {
       content.rawInsight = noteContent.slice(0, 2000);
       content.oneLiner = `Research: ${expertDomain || 'general'}`;
       content.ideaCategory = 'Tech';
+    } else if (category === 'Reading') {
+      content.rawInsight = noteContent.slice(0, 2000);
+      content.oneLiner = `Research: ${expertDomain || 'general'}`;
+      content.source = citations.find(c => c.type === 'web' && c.url)?.url || '';
     } else {
       content.notes = noteContent.slice(0, 2000);
       content.adminCategory = 'Work';
@@ -43,6 +48,8 @@ export async function POST(request: NextRequest) {
       priority: category === 'Admin' ? 'Medium' : undefined,
       content,
     });
+
+    logActivity(newEntry.id, 'created', { category, source: 'research' });
 
     return NextResponse.json({
       status: 'success',

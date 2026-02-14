@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { searchEntries } from '@/services/db/entries';
 import { getRelatedEntries } from '@/services/db/relations';
+import { logActivity } from '@/services/db/activity';
 import { validate, searchSchema } from '@/lib/validation';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -240,6 +241,9 @@ export async function POST(request: NextRequest) {
         console.error('AI summary error:', aiError);
       }
     }
+
+    // Log search activity
+    logActivity(null, 'searched', { query, resultCount: filtered.length });
 
     // Strip internal _neonId before sending response
     const cleanResults = filtered.slice(0, 50).map(({ _neonId, ...rest }) => rest);

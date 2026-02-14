@@ -6,6 +6,7 @@ import type { UrlProcessResult } from '@/lib/types';
 interface LinkSummaryCardProps {
   result: UrlProcessResult;
   onDismiss: () => void;
+  onSave?: () => Promise<void>;
 }
 
 // Helper to safely render items that might be strings or objects
@@ -27,10 +28,11 @@ function formatItem(item: unknown): string {
   return String(item);
 }
 
-export function LinkSummaryCard({ result, onDismiss }: LinkSummaryCardProps) {
+export function LinkSummaryCard({ result, onDismiss, onSave }: LinkSummaryCardProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(['tldr', 'full_summary', 'main_ideas', 'takeaways'])
   );
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const toggleSection = (section: string) => {
     setExpandedSections((prev) => {
@@ -400,7 +402,7 @@ export function LinkSummaryCard({ result, onDismiss }: LinkSummaryCardProps) {
       <div className="border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
         <div className="flex flex-wrap items-center gap-2">
           <a href={result.url} target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-1.5 rounded-lg bg-[#10b981] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#059669]">
+            className="flex items-center gap-1.5 rounded-lg bg-[var(--bg-elevated)] px-4 py-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" strokeLinecap="round" strokeLinejoin="round"/>
               <path d="M15 3h6v6" strokeLinecap="round" strokeLinejoin="round"/>
@@ -408,16 +410,40 @@ export function LinkSummaryCard({ result, onDismiss }: LinkSummaryCardProps) {
             </svg>
             Read Original
           </a>
+          {onSave && saveState !== 'saved' && (
+            <button
+              onClick={async () => {
+                setSaveState('saving');
+                try {
+                  await onSave();
+                  setSaveState('saved');
+                } catch {
+                  setSaveState('error');
+                  setTimeout(() => setSaveState('idle'), 2000);
+                }
+              }}
+              disabled={saveState === 'saving'}
+              className="flex items-center gap-1.5 rounded-lg bg-[#10b981] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#059669] disabled:opacity-50"
+            >
+              {saveState === 'saving' ? (
+                <><div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> Saving...</>
+              ) : saveState === 'error' ? (
+                'Failed — Retry'
+              ) : (
+                <><svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" strokeLinecap="round" strokeLinejoin="round"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save to Reading</>
+              )}
+            </button>
+          )}
           <button onClick={onDismiss} className="ml-auto rounded-lg bg-[var(--bg-elevated)] px-4 py-2 text-sm text-[var(--text-muted)] hover:text-[var(--text-secondary)]">
             Dismiss
           </button>
         </div>
-        {result.page_id && (
+        {saveState === 'saved' && (
           <div className="mt-3 flex items-center gap-2 rounded-lg bg-[#10b981]/10 px-3 py-2 text-sm text-[#10b981]">
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            Saved to Ideas
+            Saved to Reading
           </div>
         )}
       </div>

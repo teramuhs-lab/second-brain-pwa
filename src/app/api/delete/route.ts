@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { archiveEntry, getEntryByLegacyId } from '@/services/db/entries';
+import { archiveEntry, getEntry, getEntryByLegacyId } from '@/services/db/entries';
+import { logActivity } from '@/services/db/activity';
 import { validate, deleteSchema } from '@/lib/validation';
 
 export async function POST(request: NextRequest) {
@@ -11,14 +12,17 @@ export async function POST(request: NextRequest) {
     }
     const { page_id } = parsed.data;
 
-    // Find entry by ID
-    const entry = await getEntryByLegacyId(page_id);
+    // Find entry by UUID first, then fall back to legacy Notion ID
+    const entry = await getEntry(page_id) || await getEntryByLegacyId(page_id);
     if (!entry) {
       return NextResponse.json(
         { status: 'error', error: 'Entry not found in database' },
         { status: 404 }
       );
     }
+
+    // Log before archiving (entry still exists)
+    logActivity(entry.id, 'archived', { title: entry.title, category: entry.category });
 
     // Archive entry
     const archived = await archiveEntry(entry.id);

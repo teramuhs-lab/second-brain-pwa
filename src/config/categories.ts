@@ -7,6 +7,7 @@ export const STATUS_OPTIONS: Record<string, readonly string[]> = {
   Projects: ['Not Started', 'Active', 'Waiting', 'Complete'],
   People: ['New', 'Active', 'Dormant'],
   Ideas: ['Spark', 'Developing', 'Actionable'],
+  Reading: ['Unread', 'Read'],
 } as const;
 
 // Priority options (shared across databases)
@@ -51,6 +52,8 @@ export function getDoneStatus(database: string): string {
       return 'Complete';
     case 'People':
       return 'Dormant';
+    case 'Reading':
+      return 'Read';
     default:
       return 'Done';
   }

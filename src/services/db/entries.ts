@@ -13,7 +13,7 @@ import { generateEmbedding, buildEmbeddingText } from './embeddings';
 // ============= Types =============
 
 export interface CreateEntryInput {
-  category: 'People' | 'Project' | 'Idea' | 'Admin';
+  category: 'People' | 'Project' | 'Idea' | 'Admin' | 'Reading';
   title: string;
   status?: string;
   priority?: string;
@@ -47,6 +47,7 @@ const CATEGORY_TO_DB_CATEGORY: Record<string, string> = {
   Project: 'Projects',
   Idea: 'Ideas',
   Admin: 'Admin',
+  Reading: 'Reading',
 };
 
 // ============= CREATE =============

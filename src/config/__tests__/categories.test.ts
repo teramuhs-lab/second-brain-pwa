@@ -25,6 +25,10 @@ describe('getStatusOptions', () => {
     expect(getStatusOptions('Ideas')).toEqual(['Spark', 'Developing', 'Actionable']);
   });
 
+  it('returns Reading statuses', () => {
+    expect(getStatusOptions('Reading')).toEqual(['Unread', 'Read']);
+  });
+
   it('returns empty array for unknown database', () => {
     expect(getStatusOptions('Unknown')).toEqual([]);
   });
@@ -59,14 +63,18 @@ describe('getDoneStatus', () => {
     expect(getDoneStatus('People')).toBe('Dormant');
   });
 
+  it('returns Read for Reading', () => {
+    expect(getDoneStatus('Reading')).toBe('Read');
+  });
+
   it('returns Done for unknown database', () => {
     expect(getDoneStatus('Ideas')).toBe('Done');
   });
 });
 
 describe('constants', () => {
-  it('has all 4 database categories', () => {
-    expect(Object.keys(STATUS_OPTIONS)).toHaveLength(4);
+  it('has all 5 database categories', () => {
+    expect(Object.keys(STATUS_OPTIONS)).toHaveLength(5);
   });
 
   it('has 3 priority levels', () => {

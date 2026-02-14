@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import OpenAI from 'openai';
 import { YoutubeTranscript } from 'youtube-transcript';
-import { createEntry } from '@/services/db/entries';
 import { validate, processUrlSchema } from '@/lib/validation';
 
 // Environment variables
@@ -554,33 +553,6 @@ Output STRICT JSON (no markdown):
   return defaultSummary;
 }
 
-// Create Idea entry
-async function createIdeaEntry(data: {
-  title: string;
-  url: string;
-  summary: RichSummary;
-}): Promise<string | null> {
-  try {
-    const newEntry = await createEntry({
-      category: 'Idea',
-      title: data.title.slice(0, 100),
-      content: {
-        oneLiner: data.summary.one_liner.slice(0, 200),
-        rawInsight: data.summary.tldr,
-        source: data.url,
-        ideaCategory: data.summary.category,
-        // Store full structured summary in jsonb for rich rendering
-        structuredSummary: data.summary,
-      },
-    });
-
-    return newEntry.id;
-  } catch (error) {
-    console.error('Failed to create idea entry:', error);
-    return null;
-  }
-}
-
 // Main POST handler
 export async function POST(request: NextRequest) {
   try {
@@ -604,14 +576,7 @@ export async function POST(request: NextRequest) {
       urlType
     );
 
-    // Create Idea entry
-    const pageId = await createIdeaEntry({
-      title: extracted.title,
-      url: url,
-      summary: summary,
-    });
-
-    // Return ultra-detailed result
+    // Return preview data (no auto-save — user decides to save or dismiss)
     return NextResponse.json({
       status: 'success',
       url,
@@ -619,7 +584,6 @@ export async function POST(request: NextRequest) {
       title: extracted.title,
       author: extracted.author,
       readTime: extracted.readTime,
-      page_id: pageId,
       // Ultra-detailed summary fields
       one_liner: summary.one_liner,
       tldr: summary.tldr,

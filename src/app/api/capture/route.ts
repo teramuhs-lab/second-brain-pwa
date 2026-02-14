@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { createEntry, createInboxLogEntry } from '@/services/db/entries';
 import { suggestRelations, addRelation } from '@/services/db/relations';
+import { logActivity } from '@/services/db/activity';
 import { validate, captureSchema } from '@/lib/validation';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 interface ClassificationResult {
-  category: 'People' | 'Project' | 'Idea' | 'Admin';
+  category: 'People' | 'Project' | 'Idea' | 'Admin' | 'Reading';
   confidence: number;
   extracted_data: Record<string, string>;
   reasoning: string;
@@ -29,10 +30,11 @@ RULES:
 2. Projects = tasks with deliverables, multi-step work, deadlines
 3. Ideas = insights, quotes, observations, "shower thoughts", learnings
 4. Admin = errands, appointments, logistics, bills, personal tasks
+5. Reading = articles, links, URLs, reference material, "read later" items, bookmarks
 
 OUTPUT STRICT JSON:
 {
-  "category": "People" | "Project" | "Idea" | "Admin",
+  "category": "People" | "Project" | "Idea" | "Admin" | "Reading",
   "confidence": 0.0-1.0,
   "extracted_data": { ... category-specific fields ... },
   "reasoning": "Brief explanation"
@@ -41,7 +43,8 @@ OUTPUT STRICT JSON:
 For People: {"name": "PersonName", "company": "", "context": "..."}
 For Project: {"name": "ProjectTitle", "next_action": "..."}
 For Idea: {"title": "IdeaTitle", "raw_insight": "..."}
-For Admin: {"task": "TaskDescription", "priority": "Medium"}`,
+For Admin: {"task": "TaskDescription", "priority": "Medium"}
+For Reading: {"title": "ArticleTitle", "source": "URL if present"}`,
       },
       { role: 'user', content: text },
     ],
@@ -98,6 +101,9 @@ export async function POST(request: NextRequest) {
       content.lastContact = new Date().toISOString().split('T')[0];
       if (extracted_data.company) content.company = extracted_data.company;
       if (extracted_data.context) content.context = extracted_data.context;
+    } else if (category === 'Reading') {
+      content.ideaCategory = 'Tech';
+      if (extracted_data.source) content.source = extracted_data.source;
     }
 
     // Step 3: Create entry in database
@@ -122,7 +128,10 @@ export async function POST(request: NextRequest) {
       console.error('Failed to log to Inbox Log:', logError);
     }
 
-    // Step 5: Auto-suggest and create relations (best-effort, non-blocking)
+    // Step 5: Log activity
+    logActivity(newEntry.id, 'created', { category, confidence });
+
+    // Step 6: Auto-suggest and create relations (best-effort, non-blocking)
     let relatedItems: Array<{ id: string; title: string; category: string; similarity: number }> = [];
     try {
       const suggestions = await suggestRelations(newEntry.id, { limit: 3, threshold: 0.8 });

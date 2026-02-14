@@ -20,6 +20,7 @@ const CATEGORY_OPTIONS: { value: Category; label: string; icon: string }[] = [
   { value: 'Project', label: 'Project', icon: '🚀' },
   { value: 'Idea', label: 'Idea', icon: '💡' },
   { value: 'Admin', label: 'Admin', icon: '📋' },
+  { value: 'Reading', label: 'Reading', icon: '📖' },
 ];
 
 const DATABASE_TO_CATEGORY: Record<string, Category> = {
@@ -27,12 +28,14 @@ const DATABASE_TO_CATEGORY: Record<string, Category> = {
   projects: 'Project',
   people: 'People',
   ideas: 'Idea',
+  reading: 'Reading',
 };
 
 const STATUS_OPTIONS: Record<string, string[]> = {
   admin: ['Todo', 'Done'],
   projects: ['Not Started', 'Active', 'Waiting', 'Complete'],
   people: ['New', 'Active', 'Dormant'],
+  reading: ['Unread', 'Read'],
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -60,7 +63,7 @@ export function TaskDetailSheet({
 
   const currentCategory = DATABASE_TO_CATEGORY[database];
   const statusOptions = STATUS_OPTIONS[database] || ['Todo', 'Done'];
-  const completedStatus = database === 'projects' ? 'Complete' : database === 'people' ? 'Dormant' : 'Done';
+  const completedStatus = database === 'projects' ? 'Complete' : database === 'people' ? 'Dormant' : database === 'reading' ? 'Read' : 'Done';
 
   // Handle open/close animation
   useEffect(() => {

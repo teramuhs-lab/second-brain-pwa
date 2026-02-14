@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { CaptureInput } from '@/features/capture/components/CaptureInput';
 import { ConfirmCard } from '@/features/capture/components/ConfirmCard';
 import { LinkSummaryCard } from '@/features/reading/components/LinkSummaryCard';
-import { captureThought, recategorize, processUrl } from '@/lib/api';
+import { captureThought, recategorize, processUrl, saveReading } from '@/lib/api';
 import { getPendingItems, syncQueue } from '@/lib/offline-queue';
 import type { Category, ConfirmationState, UrlProcessResult } from '@/lib/types';
 
@@ -13,7 +13,6 @@ const URL_STAGES = [
   'Detecting content type...',
   'Fetching transcript...',
   'Analyzing with AI...',
-  'Creating entry...',
 ];
 
 export default function CapturePage() {
@@ -136,6 +135,21 @@ export default function CapturePage() {
     setUrlResult(null);
   }, []);
 
+  const handleSaveReading = useCallback(async () => {
+    if (!urlResult || urlResult.status === 'error') return;
+    const result = await saveReading({
+      title: urlResult.title,
+      url: urlResult.url,
+      oneLiner: urlResult.one_liner,
+      tldr: urlResult.tldr,
+      category: urlResult.category,
+      structuredSummary: urlResult as unknown as Record<string, unknown>,
+    });
+    if (result.status === 'error') {
+      throw new Error(result.error);
+    }
+  }, [urlResult]);
+
   const handleRecategorize = useCallback(
     async (newCategory: Category | 'Ignore') => {
       if (!confirmation) return;
@@ -238,6 +252,7 @@ export default function CapturePage() {
           <LinkSummaryCard
             result={urlResult}
             onDismiss={handleUrlDismiss}
+            onSave={handleSaveReading}
           />
         </div>
       )}
