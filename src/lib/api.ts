@@ -29,7 +29,7 @@ export async function captureThought(text: string, reminderDate?: string): Promi
   }
 }
 
-// Recategorize an entry (uses local API route that talks directly to Notion)
+// Recategorize an entry
 export async function recategorize(
   pageId: string,
   currentCategory: Category,
@@ -37,7 +37,7 @@ export async function recategorize(
   rawText: string
 ): Promise<CaptureResponse> {
   try {
-    // Use local API route instead of n8n webhook
+    // Use local API route
     const response = await fetch('/api/recategorize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -77,7 +77,7 @@ export async function updateEntry(
   updates: Record<string, unknown>
 ): Promise<UpdateResponse> {
   try {
-    // Use local API endpoint for direct Notion access
+    // Use local API endpoint
     const response = await fetch('/api/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

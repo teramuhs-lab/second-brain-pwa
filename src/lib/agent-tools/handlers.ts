@@ -1,7 +1,7 @@
 // Shared agent handler functions
 // Core logic for brain search and item details used by both agents
 
-import { searchEntries, getEntry, getEntryByNotionId } from '@/services/db/entries';
+import { searchEntries, getEntry, getEntryByLegacyId } from '@/services/db/entries';
 
 // ============= Types =============
 
@@ -27,7 +27,7 @@ export interface ItemDetails {
 
 // ============= Brain Search =============
 
-/** Search Neon database using hybrid vector + keyword search */
+/** Search database using hybrid vector + keyword search */
 export async function searchBrainEntries(
   query: string,
   categories?: string[]
@@ -62,7 +62,7 @@ export async function searchBrainEntries(
       .join(' ');
 
     return {
-      id: r.notionId || r.id,
+      id: r.id,
       title: r.title,
       category: categoryMap[r.category] || r.category,
       snippet: contentText.slice(0, 200) || r.title,
@@ -75,13 +75,13 @@ export async function searchBrainEntries(
 
 // ============= Item Details =============
 
-/** Get full details for an entry (by Neon ID or Notion ID) */
+/** Get full details for an entry */
 export async function getItemDetailsCore(itemId: string): Promise<ItemDetails | null> {
   try {
-    // Try as Neon UUID first, then as Notion ID
+    // Try as UUID first, then legacy ID
     let entry = await getEntry(itemId);
     if (!entry) {
-      entry = await getEntryByNotionId(itemId);
+      entry = await getEntryByLegacyId(itemId);
     }
     if (!entry) return null;
 
@@ -115,7 +115,7 @@ export async function getItemDetailsCore(itemId: string): Promise<ItemDetails | 
     }
 
     return {
-      id: entry.notionId || entry.id,
+      id: entry.id,
       title: entry.title,
       status: entry.status || undefined,
       priority: entry.priority || undefined,

@@ -1,8 +1,6 @@
 // Category and status definitions
 // Previously hardcoded in multiple components and API routes
 
-import type { DatabaseKey } from './constants';
-
 // Status options per database
 export const STATUS_OPTIONS: Record<string, readonly string[]> = {
   Admin: ['Todo', 'Done'],
@@ -36,18 +34,18 @@ export const INBOX_LOG_STATUS = ['Processed', 'Needs Review', 'Fixed', 'Ignored'
 export type InboxLogStatus = (typeof INBOX_LOG_STATUS)[number];
 
 // Get status options for a database
-export function getStatusOptions(database: DatabaseKey | string): readonly string[] {
+export function getStatusOptions(database: string): readonly string[] {
   return STATUS_OPTIONS[database] || [];
 }
 
 // Check if a status is valid for a database
-export function isValidStatus(database: DatabaseKey | string, status: string): boolean {
+export function isValidStatus(database: string, status: string): boolean {
   const options = getStatusOptions(database);
   return options.includes(status);
 }
 
 // Get the "done" status for a database
-export function getDoneStatus(database: DatabaseKey | string): string {
+export function getDoneStatus(database: string): string {
   switch (database) {
     case 'Projects':
       return 'Complete';

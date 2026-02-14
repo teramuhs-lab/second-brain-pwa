@@ -78,7 +78,7 @@ export interface SavedSearch {
   createdAt: string;
 }
 
-// Simplified Entry type from API (n8n returns this format)
+// Simplified Entry type from API
 export interface Entry {
   id: string;
   title: string;
@@ -97,7 +97,7 @@ export interface Entry {
   maturity?: string;
 }
 
-// Detailed Entry types (for future use with direct Notion access)
+// Detailed Entry types
 export interface BaseEntry {
   id: string;
   created_time: string;
@@ -350,7 +350,7 @@ export interface ReadingItem {
   maturity: string;
   created_time: string;
   last_edited_time: string;
-  // Structured summary for rich rendering (fetched from page blocks)
+  // Structured summary for rich rendering
   structured_summary?: StructuredSummary;
 }
 
@@ -359,7 +359,7 @@ export type ExpertDomain = 'tech' | 'business' | 'investment' | 'personal' | 're
 
 export interface ResearchCitation {
   number: number;
-  type: 'notion' | 'web';
+  type: 'brain' | 'web';
   id?: string;
   url?: string;
   title: string;

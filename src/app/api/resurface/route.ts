@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getEntry, getEntryByNotionId } from '@/services/db/entries';
+import { getEntry, getEntryByLegacyId } from '@/services/db/entries';
 import { getRelatedEntries, suggestRelations } from '@/services/db/relations';
 
 export async function GET(request: NextRequest) {
@@ -13,10 +13,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Look up entry by Neon ID or Notion ID
+    // Look up entry by ID
     let entry = await getEntry(entryId);
     if (!entry) {
-      entry = await getEntryByNotionId(entryId);
+      entry = await getEntryByLegacyId(entryId);
     }
     if (!entry) {
       return NextResponse.json(
@@ -33,9 +33,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       status: 'success',
-      entryId: entry.notionId || entry.id,
+      entryId: entry.id,
       linked: linked.map(e => ({
-        id: e.notionId || e.id,
+        id: e.id,
         title: e.title,
         category: e.category,
         status: e.status || undefined,

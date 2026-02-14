@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
       if (extracted_data.context) content.context = extracted_data.context;
     }
 
-    // Step 3: Create entry via dual-write service (Neon + Notion)
+    // Step 3: Create entry in database
     const newEntry = await createEntry({
       category,
       title: entryTitle,
@@ -112,13 +112,13 @@ export async function POST(request: NextRequest) {
       dueDate: reminderDate || null,
     });
 
-    // Step 4: Log to Inbox Log via dual-write service
+    // Step 4: Log to Inbox Log
     try {
       await createInboxLogEntry({
         rawInput: text,
         category,
         confidence,
-        destinationId: newEntry.notionId || newEntry.id,
+        destinationId: newEntry.id,
         status: 'Processed',
       });
     } catch (logError) {
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
       status: 'captured',
       category,
       confidence,
-      page_id: newEntry.notionId || newEntry.id,
+      page_id: newEntry.id,
       reminder: reminderDate || null,
       related: relatedItems.length > 0 ? relatedItems : undefined,
     });

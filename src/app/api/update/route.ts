@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateEntry, getEntryByNotionId } from '@/services/db/entries';
+import { updateEntry, getEntryByLegacyId } from '@/services/db/entries';
 import type { UpdateEntryInput } from '@/services/db/entries';
 
 // Map frontend field keys to Neon content keys
@@ -28,8 +28,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find entry in Neon by Notion ID
-    const entry = await getEntryByNotionId(page_id);
+    // Find entry by ID
+    const entry = await getEntryByLegacyId(page_id);
     if (!entry) {
       return NextResponse.json(
         { status: 'error', error: 'Entry not found in database' },
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
       updateInput.content = contentUpdates;
     }
 
-    // Update via dual-write service (Neon + Notion)
+    // Update entry
     const updated = await updateEntry(entry.id, updateInput);
 
     if (!updated) {

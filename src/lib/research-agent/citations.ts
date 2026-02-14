@@ -2,12 +2,12 @@
 
 export interface Citation {
   number: number;
-  type: 'notion' | 'web';
-  id?: string;      // Notion page ID
+  type: 'brain' | 'web';
+  id?: string;      // Entry ID
   url?: string;     // Web URL
   title: string;
   snippet?: string;
-  database?: string; // For Notion: People, Projects, Ideas, Admin
+  database?: string; // Category: People, Projects, Ideas, Admin
 }
 
 export class CitationTracker {
@@ -75,8 +75,8 @@ export class CitationTracker {
 
     return citations
       .map(c => {
-        const source = c.type === 'notion'
-          ? `${c.database || 'Notion'} (${c.id?.slice(0, 8)}...)`
+        const source = c.type === 'brain'
+          ? `${c.database || 'Brain'} (${c.id?.slice(0, 8)}...)`
           : c.url;
         return `[${c.number}] ${c.title} - ${source}`;
       })
@@ -95,8 +95,8 @@ export class CitationTracker {
         if (c.type === 'web' && c.url) {
           return `[${c.number}] [${c.title}](${c.url})`;
         }
-        // Notion entries - just show title and database
-        return `[${c.number}] ${c.title} (${c.database || 'Notion'})`;
+        // Brain entries - just show title and category
+        return `[${c.number}] ${c.title} (${c.database || 'Brain'})`;
       })
       .join('\n');
   }

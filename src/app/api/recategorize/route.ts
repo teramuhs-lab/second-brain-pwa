@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createEntry, archiveEntry, getEntryByNotionId, createInboxLogEntry } from '@/services/db/entries';
+import { createEntry, archiveEntry, getEntryByLegacyId, createInboxLogEntry } from '@/services/db/entries';
 
 type Category = 'People' | 'Project' | 'Idea' | 'Admin';
 const VALID_CATEGORIES = new Set(['People', 'Project', 'Idea', 'Admin']);
@@ -24,9 +24,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Step 1: Archive the old entry via dual-write (Neon + Notion)
+    // Step 1: Archive the old entry
     try {
-      const oldEntry = await getEntryByNotionId(page_id);
+      const oldEntry = await getEntryByLegacyId(page_id);
       if (oldEntry) {
         await archiveEntry(oldEntry.id);
       }
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       content.lastContact = new Date().toISOString().split('T')[0];
     }
 
-    // Step 3: Create new entry via dual-write (Neon + Notion)
+    // Step 3: Create new entry
     const newEntry = await createEntry({
       category: new_category as Category,
       title: raw_text,
@@ -54,13 +54,13 @@ export async function POST(request: NextRequest) {
       content,
     });
 
-    // Step 4: Log to Inbox Log via dual-write
+    // Step 4: Log to Inbox Log
     try {
       await createInboxLogEntry({
         rawInput: raw_text,
         category: new_category,
         confidence: 1.0,
-        destinationId: newEntry.notionId || newEntry.id,
+        destinationId: newEntry.id,
         status: 'Fixed',
       });
     } catch (logError) {
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       status: 'fixed',
       from_category: current_category,
       to_category: new_category,
-      page_id: newEntry.notionId || newEntry.id,
+      page_id: newEntry.id,
       message: `Moved from ${current_category} to ${new_category}`,
     });
   } catch (error) {

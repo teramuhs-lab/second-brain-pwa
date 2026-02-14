@@ -182,7 +182,7 @@ export function ChatMessage({
                     <span className="font-medium text-[var(--text-secondary)]">
                       {citation.title}
                     </span>
-                    {citation.type === 'notion' && citation.database && (
+                    {citation.type === 'brain' && citation.database && (
                       <span className="ml-1 text-[var(--text-muted)]">
                         ({citation.database})
                       </span>

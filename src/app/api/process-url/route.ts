@@ -552,7 +552,7 @@ Output STRICT JSON (no markdown):
   return defaultSummary;
 }
 
-// Create Idea entry via dual-write service (Neon + Notion)
+// Create Idea entry
 async function createIdeaEntry(data: {
   title: string;
   url: string;
@@ -567,12 +567,12 @@ async function createIdeaEntry(data: {
         rawInsight: data.summary.tldr,
         source: data.url,
         ideaCategory: data.summary.category,
-        // Store full structured summary in Neon jsonb for rich rendering
+        // Store full structured summary in jsonb for rich rendering
         structuredSummary: data.summary,
       },
     });
 
-    return newEntry.notionId || newEntry.id;
+    return newEntry.id;
   } catch (error) {
     console.error('Failed to create idea entry:', error);
     return null;
@@ -620,7 +620,7 @@ export async function POST(request: NextRequest) {
       urlType
     );
 
-    // Create Idea entry via dual-write (Neon + Notion)
+    // Create Idea entry
     const pageId = await createIdeaEntry({
       title: extracted.title,
       url: url,

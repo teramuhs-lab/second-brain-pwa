@@ -83,7 +83,7 @@ export default function AskPage() {
     sessionIdRef.current = `research-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   }, []);
 
-  // Save a message to Notion
+  // Save a research result
   const handleSaveMessage = useCallback(async (
     message: Message,
     category: 'Idea' | 'Admin'

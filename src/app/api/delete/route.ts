@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { archiveEntry, getEntryByNotionId } from '@/services/db/entries';
+import { archiveEntry, getEntryByLegacyId } from '@/services/db/entries';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,8 +13,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find entry in Neon by Notion ID
-    const entry = await getEntryByNotionId(page_id);
+    // Find entry by ID
+    const entry = await getEntryByLegacyId(page_id);
     if (!entry) {
       return NextResponse.json(
         { status: 'error', error: 'Entry not found in database' },
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Archive via dual-write service (Neon + Notion)
+    // Archive entry
     const archived = await archiveEntry(entry.id);
     if (!archived) {
       return NextResponse.json(

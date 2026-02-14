@@ -67,7 +67,7 @@ export function QuickCapture({ onCapture }: QuickCaptureProps) {
     'Detecting content type...',
     'Fetching transcript...',
     'Analyzing with AI...',
-    'Creating Notion entry...',
+    'Creating entry...',
   ];
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

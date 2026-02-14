@@ -80,7 +80,7 @@ async function createTask(
     return JSON.stringify({
       success: true,
       message: `Created task: "${title}"`,
-      id: entry.notionId || entry.id,
+      id: entry.id,
     });
   } catch (error) {
     return JSON.stringify({
@@ -112,7 +112,7 @@ async function saveIdea(
     return JSON.stringify({
       success: true,
       message: `Saved idea: "${title}"`,
-      id: entry.notionId || entry.id,
+      id: entry.id,
     });
   } catch (error) {
     return JSON.stringify({

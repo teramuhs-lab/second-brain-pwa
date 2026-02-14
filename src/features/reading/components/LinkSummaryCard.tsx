@@ -417,7 +417,7 @@ export function LinkSummaryCard({ result, onDismiss }: LinkSummaryCardProps) {
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            Saved to Ideas in Notion
+            Saved to Ideas
           </div>
         )}
       </div>

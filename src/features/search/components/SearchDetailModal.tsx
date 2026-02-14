@@ -250,7 +250,7 @@ export function SearchDetailModal({
     }
   };
 
-  // Save notes (uses local API for direct Notion update)
+  // Save notes
   const handleNotesSave = async (notes: string) => {
     if (!entry) return;
     try {

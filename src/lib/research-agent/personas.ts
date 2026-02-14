@@ -177,7 +177,7 @@ const DOMAIN_KEYWORDS: Record<ExpertDomain, string[]> = {
     'code', 'coding', 'programming', 'api', 'software', 'app', 'website',
     'n8n', 'automation', 'workflow', 'database', 'server', 'cloud', 'ai',
     'machine learning', 'deploy', 'debug', 'error', 'bug', 'github',
-    'javascript', 'python', 'react', 'next.js', 'notion api'
+    'javascript', 'python', 'react', 'next.js', 'database api'
   ],
   business: [
     'project', 'client', 'meeting', 'partnership', 'deal', 'revenue',

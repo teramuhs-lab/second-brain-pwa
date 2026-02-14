@@ -6,7 +6,7 @@ import { formatRelativeDate } from '@/lib/utils/date';
 import { ReadingSummaryCard } from '@/components/ReadingSummaryCard';
 import { PullToRefresh } from '@/features/tasks/components/PullToRefresh';
 
-// Fetch ideas with source URL from Notion
+// Fetch ideas with source URL
 async function fetchReadingItems(): Promise<ReadingItem[]> {
   try {
     const response = await fetch('/api/reading');

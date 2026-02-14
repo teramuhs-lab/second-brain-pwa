@@ -1,4 +1,4 @@
-// Save Research Result — dual-write to Neon + Notion
+// Save Research Result
 // Saves AI research responses as Ideas or Admin tasks
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
       content.adminCategory = 'Work';
     }
 
-    // Create entry via dual-write service (Neon + Notion)
+    // Create entry
     const newEntry = await createEntry({
       category,
       title,
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       status: 'success',
       message: `Saved as ${category}`,
-      pageId: newEntry.notionId || newEntry.id,
+      pageId: newEntry.id,
     });
   } catch (error) {
     console.error('Save research error:', error);

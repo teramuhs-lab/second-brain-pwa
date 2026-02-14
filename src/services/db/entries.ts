@@ -97,11 +97,11 @@ export async function getEntry(id: string) {
   return entry || null;
 }
 
-export async function getEntryByNotionId(notionId: string) {
+export async function getEntryByLegacyId(legacyId: string) {
   const [entry] = await db
     .select()
     .from(entries)
-    .where(eq(entries.notionId, notionId))
+    .where(eq(entries.notionId, legacyId))
     .limit(1);
   return entry || null;
 }

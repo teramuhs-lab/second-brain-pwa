@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     const items = entries.map(entry => {
       const content = (entry.content as Record<string, unknown>) || {};
       return {
-        id: entry.notionId || entry.id, // Prefer Notion ID for backward compat
+        id: entry.id,
         title: entry.title,
         status: entry.status || '',
         priority: entry.priority || undefined,

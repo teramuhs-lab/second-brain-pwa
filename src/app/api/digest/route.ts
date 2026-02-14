@@ -47,7 +47,7 @@ async function fetchDailyData(): Promise<{
   const projects: DigestItem[] = projectEntries.map(entry => {
     const content = (entry.content as Record<string, unknown>) || {};
     return {
-      id: entry.notionId || entry.id,
+      id: entry.id,
       title: entry.title,
       status: entry.status || undefined,
       priority: entry.priority || undefined,
@@ -59,7 +59,7 @@ async function fetchDailyData(): Promise<{
   const tasks: DigestItem[] = adminEntries.map(entry => {
     const content = (entry.content as Record<string, unknown>) || {};
     return {
-      id: entry.notionId || entry.id,
+      id: entry.id,
       title: entry.title,
       status: entry.status || undefined,
       priority: entry.priority || undefined,
@@ -76,7 +76,7 @@ async function fetchDailyData(): Promise<{
     .map(entry => {
       const content = (entry.content as Record<string, unknown>) || {};
       return {
-        id: entry.notionId || entry.id,
+        id: entry.id,
         title: entry.title,
         status: entry.status || undefined,
         company: (content.company as string) || undefined,
@@ -105,7 +105,7 @@ async function fetchWeeklyData(): Promise<{
   const completedTasks: DigestItem[] = adminEntries
     .filter(entry => entry.updatedAt >= oneWeekAgo)
     .map(entry => ({
-      id: entry.notionId || entry.id,
+      id: entry.id,
       title: entry.title,
       status: entry.status || undefined,
       priority: entry.priority || undefined,
@@ -114,7 +114,7 @@ async function fetchWeeklyData(): Promise<{
   const completedProjects: DigestItem[] = projectEntries
     .filter(entry => entry.updatedAt >= oneWeekAgo)
     .map(entry => ({
-      id: entry.notionId || entry.id,
+      id: entry.id,
       title: entry.title,
       status: entry.status || undefined,
     }));
@@ -129,7 +129,7 @@ async function fetchWeeklyData(): Promise<{
   for (const log of inboxEntries) {
     const category = log.category || 'Admin';
     const item: DigestItem = {
-      id: log.notionId || log.id,
+      id: log.id,
       title: log.rawInput,
       category,
     };

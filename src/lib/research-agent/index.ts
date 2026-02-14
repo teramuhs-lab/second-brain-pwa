@@ -55,7 +55,7 @@ async function handleSearchBrain(
 
   for (const match of results) {
     citations.push({
-      type: 'notion',
+      type: 'brain',
       id: match.id,
       title: match.title,
       snippet: match.snippet,
@@ -122,7 +122,7 @@ async function handleGetItemDetails(
   }
 
   const citation: Omit<Citation, 'number'> = {
-    type: 'notion',
+    type: 'brain',
     id: itemId,
     title: details.title,
     snippet: lines.join('; ').slice(0, 200),

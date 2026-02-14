@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
       };
 
       return {
-        id: r.notionId || r.id,
+        id: r.id,
         _neonId: r.id, // Internal: used for relation lookups
         title: r.title,
         category: categoryMap[r.category] || r.category,

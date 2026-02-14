@@ -153,7 +153,7 @@ async function handleCapture(chatId: number, text: string): Promise<void> {
         rawInput: text,
         category,
         confidence,
-        destinationId: newEntry.notionId || newEntry.id,
+        destinationId: newEntry.id,
         status: 'Processed',
       });
     } catch { /* non-critical */ }

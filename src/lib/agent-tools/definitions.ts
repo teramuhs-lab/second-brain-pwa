@@ -9,7 +9,7 @@ export const searchBrainTool: OpenAI.ChatCompletionTool = {
   type: 'function',
   function: {
     name: 'search_brain',
-    description: `Search the user's Second Brain (Notion databases) for items matching a topic, keyword, or name. Use for People, Projects, Ideas, and Tasks stored in Notion. Do NOT use for calendar, schedule, meetings, or email queries — use read_calendar or search_emails instead.`,
+    description: `Search the user's Second Brain for items matching a topic, keyword, or name. Use for People, Projects, Ideas, and Tasks. Do NOT use for calendar, schedule, meetings, or email queries — use read_calendar or search_emails instead.`,
     parameters: {
       type: 'object',
       properties: {
@@ -38,7 +38,7 @@ export const getItemDetailsTool: OpenAI.ChatCompletionTool = {
       properties: {
         item_id: {
           type: 'string',
-          description: 'The Notion page ID',
+          description: 'The item ID',
         },
       },
       required: ['item_id'],
@@ -224,7 +224,7 @@ export const finalizeResearchTool: OpenAI.ChatCompletionTool = {
 
 // ============= Pre-composed Tool Arrays =============
 
-/** Tools for the Ask agent (simple chat with Notion + Google + Web) */
+/** Tools for the Ask agent (chat with Brain + Google + Web) */
 export const agentTools: OpenAI.ChatCompletionTool[] = [
   searchBrainTool,
   getItemDetailsTool,

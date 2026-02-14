@@ -12,7 +12,7 @@ const URL_STAGES = [
   'Detecting content type...',
   'Fetching transcript...',
   'Analyzing with AI...',
-  'Creating Notion entry...',
+  'Creating entry...',
 ];
 
 export default function CapturePage() {

@@ -71,7 +71,6 @@ export const inboxLog = pgTable('inbox_log', {
 });
 
 // ============= Chat Sessions =============
-// Replaces Notion Chat Sessions DB
 export const chatSessions = pgTable('chat_sessions', {
   id: uuid('id').defaultRandom().primaryKey(),
   sessionId: text('session_id').notNull().unique(),
@@ -83,7 +82,6 @@ export const chatSessions = pgTable('chat_sessions', {
 
 // ============= Config =============
 // Key-value store for Google tokens, settings, etc.
-// Replaces Notion Config DB
 export const config = pgTable('config', {
   id: uuid('id').defaultRandom().primaryKey(),
   key: text('key').notNull().unique(),

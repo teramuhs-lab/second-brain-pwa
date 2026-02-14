@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getEntry, getEntryByNotionId } from '@/services/db/entries';
+import { getEntry, getEntryByLegacyId } from '@/services/db/entries';
 
 // Fetch a single entry's full details from Neon
 export async function GET(
@@ -16,10 +16,10 @@ export async function GET(
       );
     }
 
-    // Try Neon ID first, then Notion ID for backwards compatibility
+    // Try UUID first, then legacy ID for backwards compatibility
     let dbEntry = await getEntry(id);
     if (!dbEntry) {
-      dbEntry = await getEntryByNotionId(id);
+      dbEntry = await getEntryByLegacyId(id);
     }
 
     if (!dbEntry) {

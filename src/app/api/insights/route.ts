@@ -63,7 +63,7 @@ export async function GET() {
         const content = (entry.content as Record<string, unknown>) || {};
 
         staleItems.push({
-          id: entry.notionId || entry.id,
+          id: entry.id,
           title: entry.title,
           category: entry.category,
           status: entry.status || undefined,
@@ -91,7 +91,7 @@ export async function GET() {
       if (statusLower && doneStatuses.includes(statusLower)) continue;
 
       dueToday.push({
-        id: entry.notionId || entry.id,
+        id: entry.id,
         title: entry.title,
         category: entry.category,
         time: extractTimeFromDate(entry.dueDate),
