@@ -3,6 +3,59 @@
 import { getAccessToken, getSelectedCalendarIds } from './auth';
 import type { CalendarEvent, CalendarListResponse } from './types';
 
+// ============= Timezone helpers =============
+
+let cachedTimezone: string | null = null;
+
+async function getUserTimezone(): Promise<string> {
+  if (process.env.USER_TIMEZONE) return process.env.USER_TIMEZONE;
+  if (cachedTimezone) return cachedTimezone;
+
+  try {
+    const accessToken = await getAccessToken();
+    if (accessToken) {
+      const res = await fetch(
+        'https://www.googleapis.com/calendar/v3/users/me/settings/timezone',
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        cachedTimezone = data.value;
+        return cachedTimezone!;
+      }
+    }
+  } catch {
+    // Fall through to default
+  }
+  return 'UTC';
+}
+
+function getLocalDateStr(tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
+}
+
+function addDays(dateStr: string, days: number): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const d = new Date(year, month - 1, day + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function getTimezoneOffsetStr(tz: string): string {
+  const now = new Date();
+  const utcStr = now.toLocaleString('en-US', { timeZone: 'UTC' });
+  const tzStr = now.toLocaleString('en-US', { timeZone: tz });
+  const diffMinutes = (new Date(tzStr).getTime() - new Date(utcStr).getTime()) / 60000;
+  const sign = diffMinutes >= 0 ? '+' : '-';
+  const abs = Math.abs(diffMinutes);
+  return `${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
+}
+
+function midnightRFC3339(dateStr: string, tz: string): string {
+  return `${dateStr}T00:00:00${getTimezoneOffsetStr(tz)}`;
+}
+
+// ============= API functions =============
+
 export async function fetchCalendarList(): Promise<Array<{ id: string; summary: string; primary: boolean }>> {
   const accessToken = await getAccessToken();
   if (!accessToken) return [];
@@ -26,7 +79,8 @@ export async function fetchCalendarList(): Promise<Array<{ id: string; summary: 
 export async function fetchCalendarEvents(
   timeMin: string,
   timeMax: string,
-  calendarId: string = 'primary'
+  calendarId: string = 'primary',
+  timeZone?: string
 ): Promise<CalendarEvent[]> {
   const accessToken = await getAccessToken();
   if (!accessToken) return [];
@@ -38,6 +92,7 @@ export async function fetchCalendarEvents(
     orderBy: 'startTime',
     maxResults: '20',
   });
+  if (timeZone) params.set('timeZone', timeZone);
 
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
@@ -55,10 +110,11 @@ export async function fetchCalendarEvents(
 
 async function fetchSelectedCalendarsEvents(
   timeMin: string,
-  timeMax: string
+  timeMax: string,
+  timeZone?: string
 ): Promise<CalendarEvent[]> {
   const selectedIds = await getSelectedCalendarIds();
-  if (selectedIds.length === 0) return fetchCalendarEvents(timeMin, timeMax);
+  if (selectedIds.length === 0) return fetchCalendarEvents(timeMin, timeMax, 'primary', timeZone);
 
   // Only need calendar names if multiple calendars selected
   let calendarMap = new Map<string, string>();
@@ -69,7 +125,7 @@ async function fetchSelectedCalendarsEvents(
 
   const allEvents = await Promise.all(
     selectedIds.map(async (calId) => {
-      const events = await fetchCalendarEvents(timeMin, timeMax, calId);
+      const events = await fetchCalendarEvents(timeMin, timeMax, calId, timeZone);
       return events.map(e => ({
         ...e,
         calendarId: calId,
@@ -86,30 +142,25 @@ async function fetchSelectedCalendarsEvents(
 }
 
 export async function fetchTodaysEvents(): Promise<CalendarEvent[]> {
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const endOfDay = new Date(startOfDay);
-  endOfDay.setDate(endOfDay.getDate() + 1);
-
-  return fetchSelectedCalendarsEvents(startOfDay.toISOString(), endOfDay.toISOString());
+  const tz = await getUserTimezone();
+  const today = getLocalDateStr(tz);
+  const tomorrow = addDays(today, 1);
+  return fetchSelectedCalendarsEvents(midnightRFC3339(today, tz), midnightRFC3339(tomorrow, tz), tz);
 }
 
 export async function fetchTomorrowsEvents(): Promise<CalendarEvent[]> {
-  const now = new Date();
-  const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-  const endOfTomorrow = new Date(startOfTomorrow);
-  endOfTomorrow.setDate(endOfTomorrow.getDate() + 1);
-
-  return fetchSelectedCalendarsEvents(startOfTomorrow.toISOString(), endOfTomorrow.toISOString());
+  const tz = await getUserTimezone();
+  const today = getLocalDateStr(tz);
+  const tomorrow = addDays(today, 1);
+  const dayAfter = addDays(today, 2);
+  return fetchSelectedCalendarsEvents(midnightRFC3339(tomorrow, tz), midnightRFC3339(dayAfter, tz), tz);
 }
 
 export async function fetchWeekEvents(): Promise<CalendarEvent[]> {
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const endOfWeek = new Date(startOfDay);
-  endOfWeek.setDate(endOfWeek.getDate() + 7);
-
-  return fetchSelectedCalendarsEvents(startOfDay.toISOString(), endOfWeek.toISOString());
+  const tz = await getUserTimezone();
+  const today = getLocalDateStr(tz);
+  const weekEnd = addDays(today, 7);
+  return fetchSelectedCalendarsEvents(midnightRFC3339(today, tz), midnightRFC3339(weekEnd, tz), tz);
 }
 
 export async function createCalendarEvent(event: {
