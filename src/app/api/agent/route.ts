@@ -6,6 +6,7 @@ import { searchBrainEntries, getItemDetailsCore } from '@/lib/agent-tools/handle
 import { isGoogleConnected } from '@/services/google/auth';
 import { fetchTodaysEvents, fetchTomorrowsEvents, fetchWeekEvents, createCalendarEvent, deleteCalendarEvent } from '@/services/google/calendar';
 import { searchEmails as searchGmail, getEmailDetail } from '@/services/google/gmail';
+import { searchWebWithFocus, formatWebResultsForContext, type SearchFocus } from '@/lib/research-agent/web-search';
 import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { chatSessions } from '@/db/schema';
@@ -284,6 +285,33 @@ async function getEmailTool(emailId: string): Promise<string> {
   }
 }
 
+async function searchWeb(query: string, focus?: string): Promise<string> {
+  try {
+    const result = await searchWebWithFocus(query, (focus || 'general') as SearchFocus);
+
+    if (!result.success) {
+      return JSON.stringify({ success: false, error: result.error });
+    }
+
+    return JSON.stringify({
+      success: true,
+      query,
+      count: result.results.length,
+      formatted: formatWebResultsForContext(result.results),
+      results: result.results.slice(0, 5).map(r => ({
+        title: r.title,
+        url: r.url,
+        snippet: r.snippet,
+      })),
+    });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: `Web search failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
 async function handleToolCall(
   name: string,
   args: Record<string, unknown>
@@ -307,6 +335,8 @@ async function handleToolCall(
       return await getEmailTool(args.email_id as string);
     case 'delete_calendar_event':
       return await deleteCalendarEventTool(args.event_id as string, args.calendar_id as string | undefined);
+    case 'search_web':
+      return await searchWeb(args.query as string, args.focus as string | undefined);
     default:
       return JSON.stringify({ error: `Unknown tool: ${name}` });
   }
@@ -328,6 +358,7 @@ You have access to these tools:
 - **delete_calendar_event**: Delete/remove a calendar event by ID (use read_calendar first to find the event)
 - **search_emails**: Search Gmail by sender, subject, date, or keywords
 - **get_email**: Read full email content by ID (use after search_emails)
+- **search_web**: Search the internet for external/current information (uses Tavily)
 
 ## Behavior Guidelines
 1. **Route queries to the right tool:**
@@ -335,7 +366,9 @@ You have access to these tools:
    - Email, messages, inbox, "emails from..." → use **search_emails**
    - Schedule/create a meeting or event → use **read_calendar** first (check availability), then **create_calendar_event**
    - Remove/delete/cancel an event → use **read_calendar** first (find the event ID), then **delete_calendar_event**
-   - Everything else (people, projects, ideas, tasks, topics, keywords) → use **search_brain**
+   - People, projects, ideas, tasks, topics stored in the brain → use **search_brain** first
+   - Current events, external knowledge, general questions, fact-checking → use **search_web**
+   - If brain search returns no results and the question could benefit from web info → use **search_web** as fallback
 2. Present results clearly organized by category
 3. Include item IDs so you can get more details if asked
 4. Offer helpful follow-up actions (view details, create related tasks, etc.)
@@ -487,7 +520,7 @@ export async function POST(request: NextRequest) {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       temperature: 0.7,
-      max_tokens: 800,
+      max_tokens: 1500,
       messages: recentMessages as OpenAI.ChatCompletionMessageParam[],
       tools: agentTools,
       tool_choice: 'auto',
@@ -538,7 +571,7 @@ export async function POST(request: NextRequest) {
       const finalCompletion = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         temperature: 0.7,
-        max_tokens: 800,
+        max_tokens: 1500,
         messages: updatedMessages as OpenAI.ChatCompletionMessageParam[],
       });
 

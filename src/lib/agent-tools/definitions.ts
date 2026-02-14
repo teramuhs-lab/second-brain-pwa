@@ -224,7 +224,7 @@ export const finalizeResearchTool: OpenAI.ChatCompletionTool = {
 
 // ============= Pre-composed Tool Arrays =============
 
-/** Tools for the Ask agent (simple chat with Notion + Google) */
+/** Tools for the Ask agent (simple chat with Notion + Google + Web) */
 export const agentTools: OpenAI.ChatCompletionTool[] = [
   searchBrainTool,
   getItemDetailsTool,
@@ -235,6 +235,7 @@ export const agentTools: OpenAI.ChatCompletionTool[] = [
   deleteCalendarEventTool,
   searchEmailsTool,
   getEmailTool,
+  searchWebTool,
 ];
 
 /** Tools for the Research agent (ReAct loop with web search + citations) */
