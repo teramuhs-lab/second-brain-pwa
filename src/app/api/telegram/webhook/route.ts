@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { handleUpdate, type TelegramUpdate } from '@/services/telegram/handlers';
+import { validate, telegramUpdateSchema } from '@/lib/validation';
 
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
 
@@ -13,7 +14,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const update: TelegramUpdate = await request.json();
+    const body = await request.json();
+    const parsed = validate(telegramUpdateSchema, body);
+    if (!parsed.success) {
+      return NextResponse.json({ ok: true, error: 'Invalid update format' });
+    }
+    const update = body as TelegramUpdate;
 
     // Must await — Vercel kills the function after response is sent
     try {

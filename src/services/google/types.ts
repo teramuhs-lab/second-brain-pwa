@@ -39,3 +39,34 @@ export interface GmailListResponse {
   messages: Array<{ id: string; threadId: string }>;
   resultSizeEstimate: number;
 }
+
+// ============= Google Tasks Types =============
+
+export interface GoogleTaskList {
+  id: string;
+  title: string;
+  updated: string;
+}
+
+export interface GoogleTaskListsResponse {
+  items?: GoogleTaskList[];
+  nextPageToken?: string;
+}
+
+export interface GoogleTask {
+  id: string;
+  title: string;
+  notes?: string;
+  status: 'needsAction' | 'completed';
+  due?: string;
+  completed?: string;
+  parent?: string;
+  position: string;
+  updated: string;
+  hidden?: boolean;
+}
+
+export interface GoogleTasksResponse {
+  items?: GoogleTask[];
+  nextPageToken?: string;
+}

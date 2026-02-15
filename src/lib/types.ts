@@ -213,6 +213,42 @@ export interface DigestItem {
   nextAction?: string;
   company?: string;
   category?: string;
+  notes?: string;
+}
+
+// Yesterbox email types
+export type YesterboxCategory =
+  | 'Urgent & High-Priority'
+  | 'Deadline-Driven'
+  | 'Routine Updates'
+  | 'Non-Urgent Informational'
+  | 'Personal & Social'
+  | 'Spam/Unimportant';
+
+export interface EmailDigestItem {
+  id: string;
+  threadId: string;
+  subject: string;
+  senderName: string;
+  from: string;
+  date: string;
+  snippet: string;
+  yCategory: YesterboxCategory;
+  aiSummary: string;
+  actionNeeded?: string;
+  detailedSummary?: string;
+  urgencyReason?: string;
+  recommendedSteps?: string[];
+  responseDraft?: string;
+  replyToEmail?: string;
+  gmailComposeUrl?: string;
+}
+
+export interface EmailDashboard {
+  totalEmails: number;
+  categoryCounts: Record<string, number>;
+  aiConclusion: string;
+  criticalCount: number;
 }
 
 export interface DailyDigestResponse {
@@ -223,12 +259,18 @@ export interface DailyDigestResponse {
     projects: DigestItem[];
     tasks: DigestItem[];
     followups: DigestItem[];
+    googleTasks?: DigestItem[];
+    emailDigest?: EmailDigestItem[];
+    emailDashboard?: EmailDashboard;
   };
   counts: {
     projects: number;
     tasks: number;
     followups: number;
+    googleTasks?: number;
+    emailDigestTotal?: number;
   };
+  googleTasksScopeNeeded?: boolean;
   aiSummary: string;
   error?: string;
 }

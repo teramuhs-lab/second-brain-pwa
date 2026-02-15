@@ -9,6 +9,7 @@ const GOOGLE_REDIRECT_URI = process.env.NEXT_PUBLIC_APP_URL
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar',
   'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/tasks.readonly',
 ].join(' ');
 
 export async function GET() {

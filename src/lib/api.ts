@@ -316,11 +316,13 @@ export async function deleteEntry(pageId: string): Promise<{ status: 'deleted' |
 }
 
 // Fetch digest (daily or weekly)
-export async function fetchDigest(type: 'daily'): Promise<DailyDigestResponse>;
-export async function fetchDigest(type: 'weekly'): Promise<WeeklyDigestResponse>;
-export async function fetchDigest(type: 'daily' | 'weekly'): Promise<DigestResponse> {
+export async function fetchDigest(type: 'daily', refresh?: boolean): Promise<DailyDigestResponse>;
+export async function fetchDigest(type: 'weekly', refresh?: boolean): Promise<WeeklyDigestResponse>;
+export async function fetchDigest(type: 'daily' | 'weekly', refresh?: boolean): Promise<DigestResponse> {
   try {
-    const response = await fetch(`/api/digest?type=${type}`, {
+    const params = new URLSearchParams({ type });
+    if (refresh) params.set('refresh', 'true');
+    const response = await fetch(`/api/digest?${params}`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });

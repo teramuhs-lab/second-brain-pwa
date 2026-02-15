@@ -9,6 +9,9 @@ import { db } from '@/db';
 import { entries, inboxLog, type NewEntry } from '@/db/schema';
 import { DEFAULT_STATUS } from '@/config/constants';
 import { generateEmbedding, buildEmbeddingText } from './embeddings';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('db/entries');
 
 // ============= Types =============
 
@@ -66,7 +69,7 @@ export async function createEntry(input: CreateEntryInput) {
     try {
       embedding = await generateEmbedding(embeddingText);
     } catch (err) {
-      console.error('Failed to generate embedding:', err);
+      log.error('Failed to generate embedding', err);
     }
   }
 
@@ -209,7 +212,7 @@ export async function updateEntry(id: string, input: UpdateEntryInput) {
       const embedding = await generateEmbedding(text);
       await db.update(entries).set({ embedding }).where(eq(entries.id, id));
     } catch (err) {
-      console.error('Failed to update embedding:', err);
+      log.error('Failed to update embedding', err);
     }
   }
 
@@ -241,7 +244,7 @@ export async function searchEntries(
   try {
     queryEmbedding = await generateEmbedding(query);
   } catch (err) {
-    console.error('Failed to generate search embedding:', err);
+    log.error('Failed to generate search embedding', err);
   }
 
   // Build WHERE conditions

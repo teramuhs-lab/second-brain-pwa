@@ -7,6 +7,7 @@ import { searchBrainEntries, getItemDetailsCore, getRecentActivityCore } from '@
 import { isGoogleConnected } from '@/services/google/auth';
 import { fetchTodaysEvents, fetchTomorrowsEvents, fetchWeekEvents, createCalendarEvent, deleteCalendarEvent } from '@/services/google/calendar';
 import { searchEmails as searchGmail, getEmailDetail } from '@/services/google/gmail';
+import { fetchTaskLists, fetchTasks } from '@/services/google/tasks';
 import { searchWebWithFocus, formatWebResultsForContext, type SearchFocus } from '@/lib/research-agent/web-search';
 import { eq } from 'drizzle-orm';
 import { db } from '@/db';
@@ -318,6 +319,85 @@ async function getEmailTool(emailId: string): Promise<string> {
   }
 }
 
+async function getTaskListsHandler(): Promise<string> {
+  try {
+    const connected = await isGoogleConnected();
+    if (!connected) {
+      return JSON.stringify({
+        success: false,
+        error: 'Google is not connected. The user needs to connect Google from Settings.',
+      });
+    }
+
+    const lists = await fetchTaskLists();
+
+    return JSON.stringify({
+      success: true,
+      count: lists.length,
+      task_lists: lists.map((l) => ({
+        id: l.id,
+        title: l.title,
+      })),
+    });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: `Failed to fetch task lists: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
+async function getTasksHandler(
+  taskListId: string,
+  statusFilter?: string,
+  maxResults?: number
+): Promise<string> {
+  try {
+    const connected = await isGoogleConnected();
+    if (!connected) {
+      return JSON.stringify({
+        success: false,
+        error: 'Google is not connected. The user needs to connect Google from Settings.',
+      });
+    }
+
+    const showCompleted = statusFilter === 'completed' || statusFilter === 'all';
+
+    const tasks = await fetchTasks(taskListId, {
+      showCompleted,
+      maxResults: maxResults || 20,
+    });
+
+    let filtered = tasks;
+    if (statusFilter === 'pending') {
+      filtered = tasks.filter((t) => t.status === 'needsAction');
+    } else if (statusFilter === 'completed') {
+      filtered = tasks.filter((t) => t.status === 'completed');
+    }
+
+    return JSON.stringify({
+      success: true,
+      task_list_id: taskListId,
+      status_filter: statusFilter || 'pending',
+      count: filtered.length,
+      tasks: filtered.map((t) => ({
+        id: t.id,
+        title: t.title,
+        notes: t.notes || undefined,
+        status: t.status === 'needsAction' ? 'Pending' : 'Completed',
+        due: t.due || undefined,
+        completed: t.completed || undefined,
+        is_subtask: !!t.parent,
+      })),
+    });
+  } catch (error) {
+    return JSON.stringify({
+      success: false,
+      error: `Failed to fetch tasks: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    });
+  }
+}
+
 async function searchWeb(query: string, focus?: string): Promise<string> {
   try {
     const result = await searchWebWithFocus(query, (focus || 'general') as SearchFocus);
@@ -370,6 +450,10 @@ async function handleToolCall(
       return await getEmailTool(args.email_id as string);
     case 'delete_calendar_event':
       return await deleteCalendarEventTool(args.event_id as string, args.calendar_id as string | undefined);
+    case 'get_task_lists':
+      return await getTaskListsHandler();
+    case 'get_tasks':
+      return await getTasksHandler(args.task_list_id as string, args.status_filter as string | undefined, args.max_results as number | undefined);
     case 'search_web':
       return await searchWeb(args.query as string, args.focus as string | undefined);
     default:
@@ -394,6 +478,8 @@ You have access to these tools:
 - **delete_calendar_event**: Delete/remove a calendar event by ID (use read_calendar first to find the event)
 - **search_emails**: Search Gmail by sender, subject, date, or keywords
 - **get_email**: Read full email content by ID (use after search_emails)
+- **get_task_lists**: List all Google Task lists
+- **get_tasks**: Get tasks from a specific Google Tasks list (filter by pending/completed/all)
 - **search_web**: Search the internet for external/current information (uses Tavily)
 
 ## Behavior Guidelines
@@ -402,6 +488,8 @@ You have access to these tools:
    - Email, messages, inbox, "emails from..." → use **search_emails**
    - Schedule/create a meeting or event → use **read_calendar** first (check availability), then **create_calendar_event**
    - Remove/delete/cancel an event → use **read_calendar** first (find the event ID), then **delete_calendar_event**
+   - Google Tasks, to-do lists from Google, "what are my tasks in Google" → use **get_task_lists** first, then **get_tasks**
+   - Note: Google Tasks are external to-do lists from Google. Second Brain tasks (Admin) are items captured in this app. If the user says "my tasks" without specifying, check both.
    - "What have I been working on?", "my recent activity", productivity, behavior patterns → use **get_recent_activity**
    - People, projects, ideas, tasks, topics stored in the brain → use **search_brain** first
    - Current events, external knowledge, general questions, fact-checking → use **search_web**

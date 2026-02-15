@@ -12,12 +12,20 @@ interface CalendarInfo {
   enabled: boolean;
 }
 
+interface TaskListInfo {
+  id: string;
+  title: string;
+  enabled: boolean;
+}
+
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const [googleConnected, setGoogleConnected] = useState<GoogleStatus>(null);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [calendars, setCalendars] = useState<CalendarInfo[]>([]);
   const [calendarsLoading, setCalendarsLoading] = useState(false);
+  const [taskLists, setTaskLists] = useState<TaskListInfo[]>([]);
+  const [taskListsLoading, setTaskListsLoading] = useState(false);
 
   useEffect(() => {
     fetch('/api/google/status')
@@ -26,7 +34,7 @@ export default function SettingsPage() {
       .catch(() => setGoogleConnected(false));
   }, []);
 
-  // Fetch calendars when connected
+  // Fetch calendars and task lists when connected
   useEffect(() => {
     if (googleConnected !== true) return;
     setCalendarsLoading(true);
@@ -35,6 +43,13 @@ export default function SettingsPage() {
       .then((data) => setCalendars(data.calendars || []))
       .catch(() => setCalendars([]))
       .finally(() => setCalendarsLoading(false));
+
+    setTaskListsLoading(true);
+    fetch('/api/google/task-lists')
+      .then((r) => r.json())
+      .then((data) => setTaskLists(data.taskLists || []))
+      .catch(() => setTaskLists([]))
+      .finally(() => setTaskListsLoading(false));
   }, [googleConnected]);
 
   const handleToggleCalendar = async (calId: string, enabled: boolean) => {
@@ -60,6 +75,25 @@ export default function SettingsPage() {
     } catch {
       // Revert on failure
       setCalendars(calendars);
+    }
+  };
+
+  const handleToggleTaskList = async (listId: string, enabled: boolean) => {
+    const updated = taskLists.map(tl =>
+      tl.id === listId ? { ...tl, enabled } : tl
+    );
+    setTaskLists(updated);
+
+    const enabledIds = updated.filter(tl => tl.enabled).map(tl => tl.id);
+
+    try {
+      await fetch('/api/google/task-lists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskListIds: enabledIds }),
+      });
+    } catch {
+      setTaskLists(taskLists);
     }
   };
 
@@ -134,8 +168,8 @@ export default function SettingsPage() {
             </div>
             <p className="text-xs text-[var(--text-muted)]/70 mt-0.5">
               {googleConnected
-                ? 'Calendar & Gmail (read-only)'
-                : 'See your schedule and search emails'}
+                ? 'Calendar, Gmail & Tasks (read-only)'
+                : 'See your schedule, search emails & view tasks'}
             </p>
           </div>
 
@@ -246,6 +280,53 @@ export default function SettingsPage() {
                       <span
                         className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
                           cal.enabled ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Google Task Lists — only when Google is connected */}
+      {googleConnected && (
+        <section className="mt-8 animate-fade-up delay-3">
+          <p className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider mb-3">
+            Google Task Lists
+          </p>
+          <div className="rounded-xl bg-[var(--bg-elevated)] overflow-hidden">
+            {taskListsLoading ? (
+              <div className="px-4 py-4">
+                <p className="text-xs text-[var(--text-muted)]">Loading task lists...</p>
+              </div>
+            ) : taskLists.length === 0 ? (
+              <div className="px-4 py-4">
+                <p className="text-xs text-[var(--text-muted)]">No task lists found</p>
+              </div>
+            ) : (
+              taskLists.map((tl, idx) => (
+                <div key={tl.id}>
+                  {idx > 0 && (
+                    <div className="mx-4 border-t border-[var(--border-subtle)]" />
+                  )}
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-sm text-[var(--text-primary)] truncate block min-w-0 flex-1">
+                      {tl.title}
+                    </span>
+                    <button
+                      onClick={() => handleToggleTaskList(tl.id, !tl.enabled)}
+                      className={`relative h-6 w-10 shrink-0 rounded-full transition-colors cursor-pointer ${
+                        tl.enabled
+                          ? 'bg-[var(--accent-cyan)]'
+                          : 'bg-[var(--text-muted)]/30'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                          tl.enabled ? 'translate-x-4' : 'translate-x-0'
                         }`}
                       />
                     </button>

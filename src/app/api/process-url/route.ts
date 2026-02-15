@@ -3,6 +3,10 @@ import * as cheerio from 'cheerio';
 import OpenAI from 'openai';
 import { YoutubeTranscript } from 'youtube-transcript';
 import { validate, processUrlSchema } from '@/lib/validation';
+import { queryEntries } from '@/services/db/entries';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('api/process-url');
 
 // Environment variables
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -81,7 +85,7 @@ async function fetchYouTubeTranscript(videoId: string): Promise<{
 
     return { fullText, segments, formattedTranscript };
   } catch (error) {
-    console.error('Failed to fetch YouTube transcript:', error);
+    log.warn('Failed to fetch YouTube transcript', { error: error instanceof Error ? error.message : String(error) });
     return null;
   }
 }
@@ -104,7 +108,7 @@ async function fetchYouTubeInfo(url: string): Promise<{
       thumbnail: data.thumbnail_url || '',
     };
   } catch (err) {
-    console.warn('YouTube oEmbed fetch failed:', err);
+    log.warn('YouTube oEmbed fetch failed', { error: err instanceof Error ? err.message : String(err) });
     return null;
   }
 }
@@ -547,7 +551,7 @@ Output STRICT JSON (no markdown):
       };
     }
   } catch (e) {
-    console.error('Failed to parse AI response:', e);
+    log.error('Failed to parse AI response', e);
   }
 
   return defaultSummary;
@@ -562,6 +566,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: 'error', error: parsed.error }, { status: 400 });
     }
     const { url } = parsed.data;
+
+    // Check if this URL was already processed and saved as a Reading entry
+    try {
+      const existing = await queryEntries({ category: 'Reading', search: url, limit: 1 });
+      if (existing.length > 0) {
+        const content = (existing[0].content as Record<string, unknown>) || {};
+        if (content.source === url) {
+          const structured = (content.structuredSummary as Record<string, unknown>) || {};
+          return NextResponse.json({
+            status: 'success',
+            cached: true,
+            url,
+            urlType: detectUrlType(url),
+            title: existing[0].title,
+            page_id: existing[0].id,
+            one_liner: (content.oneLiner as string) || '',
+            tldr: (structured.tldr as string) || (content.rawInsight as string) || '',
+            category: (content.ideaCategory as string) || 'Tech',
+            ...structured,
+          });
+        }
+      }
+    } catch {
+      // If dedup check fails, continue with normal processing
+    }
 
     // Detect URL type
     const urlType = detectUrlType(url);
@@ -606,7 +635,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Process URL error:', error);
+    log.error('URL processing failed', error);
     return NextResponse.json(
       {
         status: 'error',

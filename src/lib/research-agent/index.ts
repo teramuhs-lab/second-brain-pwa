@@ -10,6 +10,7 @@ import { searchBrainEntries, getItemDetailsCore, getRecentActivityCore } from '@
 import { isGoogleConnected } from '@/services/google/auth';
 import { fetchTodaysEvents, fetchTomorrowsEvents, fetchWeekEvents, createCalendarEvent, deleteCalendarEvent } from '@/services/google/calendar';
 import { searchEmails as searchGmail, getEmailDetail } from '@/services/google/gmail';
+import { fetchTaskLists, fetchTasks } from '@/services/google/tasks';
 
 // ============= Types =============
 
@@ -287,6 +288,77 @@ async function handleGetEmail(emailId: string): Promise<ToolResult> {
   }
 }
 
+// ============= Google Tasks Handlers =============
+
+async function handleGetTaskLists(): Promise<ToolResult> {
+  try {
+    const connected = await isGoogleConnected();
+    if (!connected) {
+      return { result: 'Google is not connected. Connect from Settings.', citations: [] };
+    }
+
+    const lists = await fetchTaskLists();
+    if (lists.length === 0) {
+      return { result: 'No Google Task lists found.', citations: [] };
+    }
+
+    const listText = lists
+      .map((l) => `- "${l.title}" [id: ${l.id}]`)
+      .join('\n');
+
+    return { result: `Google Task lists (${lists.length}):\n\n${listText}`, citations: [] };
+  } catch (error) {
+    return { result: `Failed to fetch task lists: ${error instanceof Error ? error.message : 'Unknown error'}`, citations: [] };
+  }
+}
+
+async function handleGetTasks(
+  taskListId: string,
+  statusFilter?: string,
+  maxResults?: number
+): Promise<ToolResult> {
+  try {
+    const connected = await isGoogleConnected();
+    if (!connected) {
+      return { result: 'Google is not connected. Connect from Settings.', citations: [] };
+    }
+
+    const showCompleted = statusFilter === 'completed' || statusFilter === 'all';
+
+    const tasks = await fetchTasks(taskListId, {
+      showCompleted,
+      maxResults: maxResults || 20,
+    });
+
+    let filtered = tasks;
+    if (statusFilter === 'pending') {
+      filtered = tasks.filter((t) => t.status === 'needsAction');
+    } else if (statusFilter === 'completed') {
+      filtered = tasks.filter((t) => t.status === 'completed');
+    }
+
+    if (filtered.length === 0) {
+      return { result: `No tasks found (filter: ${statusFilter || 'pending'}).`, citations: [] };
+    }
+
+    const taskList = filtered
+      .map((t) => {
+        const status = t.status === 'needsAction' ? '[ ]' : '[x]';
+        const due = t.due ? ` (due: ${new Date(t.due).toLocaleDateString()})` : '';
+        const notes = t.notes ? `\n    ${t.notes.slice(0, 100)}` : '';
+        return `- ${status} ${t.title}${due}${notes}`;
+      })
+      .join('\n');
+
+    return {
+      result: `Tasks (${filtered.length}, filter: ${statusFilter || 'pending'}):\n\n${taskList}`,
+      citations: [],
+    };
+  } catch (error) {
+    return { result: `Failed to fetch tasks: ${error instanceof Error ? error.message : 'Unknown error'}`, citations: [] };
+  }
+}
+
 // ============= Research Loop =============
 
 export async function runResearchLoop(
@@ -452,6 +524,12 @@ export async function runResearchLoop(
           break;
         case 'delete_calendar_event':
           toolResult = await handleDeleteCalendarEvent(args.event_id, args.calendar_id);
+          break;
+        case 'get_task_lists':
+          toolResult = await handleGetTaskLists();
+          break;
+        case 'get_tasks':
+          toolResult = await handleGetTasks(args.task_list_id, args.status_filter, args.max_results);
           break;
         case 'get_recent_activity': {
           const validPeriod = (['today', 'this_week', 'this_month'] as const).includes(args.period)

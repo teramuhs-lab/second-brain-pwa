@@ -4,6 +4,9 @@ import { createEntry, createInboxLogEntry } from '@/services/db/entries';
 import { suggestRelations, addRelation } from '@/services/db/relations';
 import { logActivity } from '@/services/db/activity';
 import { validate, captureSchema } from '@/lib/validation';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('api/capture');
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -125,7 +128,7 @@ export async function POST(request: NextRequest) {
         status: 'Processed',
       });
     } catch (logError) {
-      console.error('Failed to log to Inbox Log:', logError);
+      log.error('Failed to log to Inbox Log', logError);
     }
 
     // Step 5: Log activity
@@ -145,7 +148,7 @@ export async function POST(request: NextRequest) {
         similarity: s.similarity,
       }));
     } catch (relError) {
-      console.error('Failed to auto-suggest relations:', relError);
+      log.error('Failed to auto-suggest relations', relError);
     }
 
     return NextResponse.json({
@@ -157,22 +160,10 @@ export async function POST(request: NextRequest) {
       related: relatedItems.length > 0 ? relatedItems : undefined,
     });
   } catch (error) {
-    console.error('Capture error:', error);
+    log.error('Capture failed', error);
     return NextResponse.json(
       { status: 'error', error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
-}
-
-// Handle CORS preflight
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    },
-  });
 }

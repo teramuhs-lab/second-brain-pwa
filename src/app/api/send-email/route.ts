@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import { validate, sendEmailSchema } from '@/lib/validation';
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const USER_EMAIL = process.env.USER_EMAIL;
@@ -191,10 +192,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body: EmailRequest = await request.json();
-    const { articles, subject } = body;
+    const body = await request.json();
+    const parsed = validate(sendEmailSchema, body);
+    if (!parsed.success) {
+      return NextResponse.json({ status: 'error', error: parsed.error }, { status: 400 });
+    }
+    const { articles, subject } = parsed.data;
 
-    if (!articles || articles.length === 0) {
+    if (articles.length === 0) {
       return NextResponse.json(
         { status: 'error', error: 'No articles provided' },
         { status: 400 }

@@ -40,6 +40,7 @@ export const entries = pgTable('entries', {
   index('entries_status_idx').on(table.status),
   index('entries_due_date_idx').on(table.dueDate),
   index('entries_created_at_idx').on(table.createdAt),
+  index('entries_priority_idx').on(table.priority),
   uniqueIndex('entries_notion_id_idx').on(table.notionId),
 ]);
 
@@ -68,7 +69,10 @@ export const inboxLog = pgTable('inbox_log', {
   status: text('status'), // 'Processed' | 'Needs Review' | 'Fixed' | 'Ignored'
   slackThread: text('slack_thread'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  index('inbox_log_created_at_idx').on(table.createdAt),
+  index('inbox_log_category_idx').on(table.category),
+]);
 
 // ============= Chat Sessions =============
 export const chatSessions = pgTable('chat_sessions', {

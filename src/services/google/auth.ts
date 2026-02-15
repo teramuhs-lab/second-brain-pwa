@@ -1,45 +1,11 @@
 // Google OAuth token management
 // Stores refresh token in Neon config table (server-side only)
 
-import { eq } from 'drizzle-orm';
-import { db } from '@/db';
-import { config } from '@/db/schema';
+import { findConfigEntry, upsertConfig, deleteConfig } from '@/services/db/config';
+import { getCached, setCache, clearCache } from '@/services/cache';
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-
-// In-memory access token cache
-let cachedAccessToken: string | null = null;
-let tokenExpiresAt = 0;
-
-// Find config entry by key
-async function findConfigEntry(key: string): Promise<{ id: string; value: unknown } | null> {
-  const [entry] = await db
-    .select()
-    .from(config)
-    .where(eq(config.key, key))
-    .limit(1);
-
-  if (!entry) return null;
-  return { id: entry.id, value: entry.value };
-}
-
-// Store or update a config entry (wraps value in {data: ...} for jsonb compatibility)
-async function upsertConfig(key: string, value: unknown): Promise<void> {
-  const wrapped = { data: value } as Record<string, unknown>;
-  await db
-    .insert(config)
-    .values({ key, value: wrapped })
-    .onConflictDoUpdate({
-      target: config.key,
-      set: { value: wrapped },
-    });
-}
-
-// Delete a config entry
-async function deleteConfig(key: string): Promise<void> {
-  await db.delete(config).where(eq(config.key, key));
-}
 
 export async function getStoredRefreshToken(): Promise<string | null> {
   const entry = await findConfigEntry('google_refresh_token');
@@ -49,15 +15,13 @@ export async function getStoredRefreshToken(): Promise<string | null> {
 
 export async function storeRefreshToken(token: string): Promise<void> {
   // Clear cached access token so next request uses the new refresh token
-  cachedAccessToken = null;
-  tokenExpiresAt = 0;
+  await clearCache('google:access_token');
   await upsertConfig('google_refresh_token', token);
 }
 
 export async function removeRefreshToken(): Promise<void> {
   await deleteConfig('google_refresh_token');
-  cachedAccessToken = null;
-  tokenExpiresAt = 0;
+  await clearCache('google:access_token');
 }
 
 export async function isGoogleConnected(): Promise<boolean> {
@@ -81,11 +45,29 @@ export async function setSelectedCalendarIds(ids: string[]): Promise<void> {
   await upsertConfig('google_selected_calendars', ids);
 }
 
-export async function getAccessToken(): Promise<string | null> {
-  // Return cached token if still valid (with 60s buffer)
-  if (cachedAccessToken && Date.now() < tokenExpiresAt - 60000) {
-    return cachedAccessToken;
+export async function getSelectedTaskListIds(): Promise<string[] | null> {
+  const entry = await findConfigEntry('google_selected_task_lists');
+  if (!entry?.value) return null;
+  try {
+    const val = entry.value as Record<string, unknown>;
+    const data = val?.data;
+    if (Array.isArray(data)) return data as string[];
+    if (typeof data === 'string') return JSON.parse(data);
+    if (Array.isArray(entry.value)) return entry.value as string[];
+    return null;
+  } catch {
+    return null;
   }
+}
+
+export async function setSelectedTaskListIds(ids: string[]): Promise<void> {
+  await upsertConfig('google_selected_task_lists', ids);
+}
+
+export async function getAccessToken(): Promise<string | null> {
+  // Check DB cache first (survives serverless cold starts)
+  const cached = await getCached<string>('google:access_token');
+  if (cached) return cached;
 
   const refreshToken = await getStoredRefreshToken();
   if (!refreshToken || !GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) return null;
@@ -107,8 +89,9 @@ export async function getAccessToken(): Promise<string | null> {
   }
 
   const data = await res.json();
-  cachedAccessToken = data.access_token;
-  tokenExpiresAt = Date.now() + data.expires_in * 1000;
 
-  return cachedAccessToken;
+  // Cache for 55 min (Google tokens expire at 60 min)
+  await setCache('google:access_token', data.access_token, 55 * 60 * 1000);
+
+  return data.access_token;
 }

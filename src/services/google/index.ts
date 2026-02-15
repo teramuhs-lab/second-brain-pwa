@@ -5,3 +5,4 @@ export * from './types';
 export * from './auth';
 export * from './calendar';
 export * from './gmail';
+export * from './tasks';

@@ -185,6 +185,46 @@ export const getEmailTool: OpenAI.ChatCompletionTool = {
   },
 };
 
+export const getTaskListsTool: OpenAI.ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'get_task_lists',
+    description: 'List all Google Task lists. Use when user asks about their tasks or to-dos in Google Tasks, or before fetching tasks from a specific list.',
+    parameters: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+  },
+};
+
+export const getTasksTool: OpenAI.ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'get_tasks',
+    description: 'Get tasks from a specific Google Tasks list. Use after get_task_lists to know which list to query. Can filter by completion status.',
+    parameters: {
+      type: 'object',
+      properties: {
+        task_list_id: {
+          type: 'string',
+          description: 'The task list ID (from get_task_lists)',
+        },
+        status_filter: {
+          type: 'string',
+          enum: ['all', 'pending', 'completed'],
+          description: 'Filter by task status. "pending" = incomplete, "completed" = done, "all" = everything. Defaults to "pending".',
+        },
+        max_results: {
+          type: 'number',
+          description: 'Maximum number of tasks to return (default 20)',
+        },
+      },
+      required: ['task_list_id'],
+    },
+  },
+};
+
 export const getRecentActivityTool: OpenAI.ChatCompletionTool = {
   type: 'function',
   function: {
@@ -260,6 +300,8 @@ export const agentTools: OpenAI.ChatCompletionTool[] = [
   deleteCalendarEventTool,
   searchEmailsTool,
   getEmailTool,
+  getTaskListsTool,
+  getTasksTool,
   searchWebTool,
 ];
 
@@ -274,5 +316,7 @@ export const researchAgentTools: OpenAI.ChatCompletionTool[] = [
   createCalendarEventTool,
   searchEmailsTool,
   getEmailTool,
+  getTaskListsTool,
+  getTasksTool,
   deleteCalendarEventTool,
 ];

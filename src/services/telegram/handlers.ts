@@ -9,7 +9,9 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { chatSessions } from '@/db/schema';
 import OpenAI from 'openai';
+import { createLogger } from '@/lib/logger';
 
+const log = createLogger('telegram/handlers');
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ALLOWED_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
@@ -182,7 +184,7 @@ async function handleCapture(chatId: number, text: string): Promise<void> {
       },
     });
   } catch (error) {
-    console.error('Telegram capture error:', error);
+    log.error('Telegram capture error', error);
     await sendMessage(chatId, 'Failed to capture. Please try again.');
   }
 }
@@ -213,7 +215,7 @@ async function handleAsk(chatId: number, question: string): Promise<void> {
     const data = await res.json();
     await sendMarkdown(chatId, data.response || 'No response from agent.');
   } catch (error) {
-    console.error('Telegram ask error:', error);
+    log.error('Telegram ask error', error);
     await sendMessage(chatId, 'Failed to get answer. Please try again.');
   }
 }
@@ -245,7 +247,7 @@ async function handleSearch(chatId: number, query: string): Promise<void> {
     const header = `Found ${results.length} result${results.length > 1 ? 's' : ''} for "${query}":\n\n`;
     await sendMessage(chatId, header + lines.join('\n'), { parse_mode: 'Markdown' });
   } catch (error) {
-    console.error('Telegram search error:', error);
+    log.error('Telegram search error', error);
     await sendMessage(chatId, 'Search failed. Please try again.');
   }
 }
@@ -278,7 +280,7 @@ async function handleDigest(chatId: number, type: string): Promise<void> {
 
     await sendMarkdown(chatId, header + (aiSummary || 'No data for this period.'));
   } catch (error) {
-    console.error('Telegram digest error:', error);
+    log.error('Telegram digest error', error);
     await sendMessage(chatId, 'Digest failed. Please try again.');
   }
 }
@@ -325,7 +327,7 @@ async function handleUrl(chatId: number, url: string): Promise<void> {
 
     await sendMessage(chatId, lines.join('\n'), { parse_mode: 'Markdown' });
   } catch (error) {
-    console.error('Telegram URL error:', error);
+    log.error('Telegram URL error', error);
     await sendMessage(chatId, 'Failed to process URL. Please try again.');
   }
 }
@@ -396,7 +398,7 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<void> {
       const emoji = { People: '👤', Project: '📋', Idea: '💡', Admin: '✅' }[newCategory] || '📝';
       await sendMessage(chatId, `${emoji} Moved to *${newCategory}*`, { parse_mode: 'Markdown' });
     } catch (error) {
-      console.error('Recategorize error:', error);
+      log.error('Recategorize error', error);
       await sendMessage(chatId, 'Failed to recategorize.');
     }
     return;
