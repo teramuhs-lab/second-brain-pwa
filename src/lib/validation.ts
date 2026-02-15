@@ -87,6 +87,12 @@ export const telegramUpdateSchema = z.object({
     id: z.string(),
     data: z.string().max(500).optional(),
   }).optional(),
+  inline_query: z.object({
+    id: z.string(),
+    from: z.object({ id: z.number() }),
+    query: z.string().max(256),
+    offset: z.string().optional(),
+  }).optional(),
 });
 
 /** Helper to validate and return typed result or error response */

@@ -27,12 +27,20 @@ interface TelegramResponse<T = unknown> {
 }
 
 async function callApi<T = unknown>(method: string, body?: Record<string, unknown>): Promise<TelegramResponse<T>> {
-  const res = await fetch(`${API_BASE}/${method}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  return res.json() as Promise<TelegramResponse<T>>;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(`${API_BASE}/${method}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      return res.json() as Promise<TelegramResponse<T>>;
+    } catch (error) {
+      if (attempt === 2) throw error;
+      await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+    }
+  }
+  throw new Error('callApi: unreachable');
 }
 
 export async function sendMessage(
@@ -76,7 +84,7 @@ export async function setWebhook(url: string): Promise<TelegramResponse> {
   return callApi('setWebhook', {
     url,
     secret_token: secret,
-    allowed_updates: ['message', 'callback_query'],
+    allowed_updates: ['message', 'callback_query', 'inline_query'],
   });
 }
 
@@ -129,6 +137,31 @@ function markdownToTelegramHtml(md: string): string {
     .replace(/^[-•]\s+/gm, '• ');
 
   return html;
+}
+
+// ============= Inline Query =============
+
+export interface InlineQueryResultArticle {
+  type: 'article';
+  id: string;
+  title: string;
+  description?: string;
+  input_message_content: {
+    message_text: string;
+    parse_mode?: 'Markdown' | 'HTML';
+  };
+}
+
+export async function answerInlineQuery(
+  inlineQueryId: string,
+  results: InlineQueryResultArticle[],
+  options?: { cache_time?: number }
+): Promise<TelegramResponse> {
+  return callApi('answerInlineQuery', {
+    inline_query_id: inlineQueryId,
+    results,
+    cache_time: options?.cache_time ?? 30,
+  });
 }
 
 export async function getFile(fileId: string): Promise<TelegramResponse<{ file_path: string }>> {

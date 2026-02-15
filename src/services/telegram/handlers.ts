@@ -1,7 +1,7 @@
 // Telegram command and message handlers
 // Routes incoming messages to the appropriate brain API
 
-import { sendMessage, sendMarkdown, answerCallbackQuery, getFile, getFileDownloadUrl } from './client';
+import { sendMessage, sendMarkdown, answerCallbackQuery, answerInlineQuery, getFile, getFileDownloadUrl, type InlineQueryResultArticle } from './client';
 import { createEntry, createInboxLogEntry, updateEntry, countEntries } from '@/services/db/entries';
 import { searchEntries } from '@/services/db/entries';
 import { suggestRelations, addRelation } from '@/services/db/relations';
@@ -25,6 +25,14 @@ export interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
   callback_query?: CallbackQuery;
+  inline_query?: InlineQuery;
+}
+
+interface InlineQuery {
+  id: string;
+  from: { id: number; first_name: string };
+  query: string;
+  offset: string;
 }
 
 interface TelegramMessage {
@@ -62,6 +70,11 @@ function isAuthorized(chatId: number): boolean {
 export async function handleUpdate(update: TelegramUpdate): Promise<void> {
   if (update.callback_query) {
     await handleCallbackQuery(update.callback_query);
+    return;
+  }
+
+  if (update.inline_query) {
+    await handleInlineQuery(update.inline_query);
     return;
   }
 
@@ -460,19 +473,35 @@ async function handleDigest(chatId: number, type: string): Promise<void> {
     const data = await res.json();
     const { aiSummary, counts } = data;
 
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
     let header: string;
     if (type === 'weekly') {
-      header = `📊 **Weekly Review**\n\n`;
+      const weekStart = new Date(today);
+      weekStart.setDate(weekStart.getDate() - 7);
+      const range = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${today.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+      header = `📊 **Weekly Review** · ${range}\n\n`;
     } else {
       const parts: string[] = [];
       if (counts?.projects > 0) parts.push(`📋 ${counts.projects} projects`);
       if (counts?.tasks > 0) parts.push(`✅ ${counts.tasks} tasks`);
       if (counts?.followups > 0) parts.push(`👤 ${counts.followups} follow-ups`);
       const summary = parts.length > 0 ? `\n${parts.join('  ·  ')}\n` : '';
-      header = `☀️ **Daily Briefing**${summary}\n`;
+      header = `☀️ **Daily Briefing** · ${dateStr}${summary}\n`;
     }
 
     await sendMarkdown(chatId, header + (aiSummary || 'All clear — nothing on your plate today! 🎉'));
+
+    // "View in app" button
+    const digestUrl = `${baseUrl}/digest`;
+    await sendMessage(chatId, '📱 Full digest with details:', {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🔗 View in app', url: digestUrl },
+        ]],
+      },
+    });
   } catch (error) {
     log.error('Telegram digest error', error);
     await sendMessage(chatId, '❌ Digest failed. Please try again.');
@@ -799,6 +828,50 @@ async function handleHelp(chatId: number): Promise<void> {
   ];
 
   await sendMessage(chatId, help.join('\n'), { parse_mode: 'Markdown' });
+}
+
+// ============= Inline Query Handler =============
+
+async function handleInlineQuery(query: InlineQuery): Promise<void> {
+  // Authorize — inline queries use from.id (same as chat ID for private chats)
+  if (!isAuthorized(query.from.id)) {
+    await answerInlineQuery(query.id, [], { cache_time: 300 });
+    return;
+  }
+
+  if (!query.query || query.query.length < 2) {
+    await answerInlineQuery(query.id, [], { cache_time: 5 });
+    return;
+  }
+
+  try {
+    const results = await searchEntries(query.query, { limit: 5 });
+
+    const articles: InlineQueryResultArticle[] = results.map((r) => {
+      const emoji = CAT_EMOJI[r.category] || '📝';
+      const status = r.status || 'Active';
+      const due = r.dueDate ? ` · 📅 ${new Date(r.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : '';
+
+      return {
+        type: 'article' as const,
+        id: r.id,
+        title: `${emoji} ${r.title}`,
+        description: `${r.category} · ${status}${due}`,
+        input_message_content: {
+          message_text: [
+            `${emoji} *${r.title}*`,
+            `_${r.category} · ${status}${due}_`,
+          ].join('\n'),
+          parse_mode: 'Markdown' as const,
+        },
+      };
+    });
+
+    await answerInlineQuery(query.id, articles, { cache_time: 10 });
+  } catch (error) {
+    log.error('Inline query error', error);
+    await answerInlineQuery(query.id, [], { cache_time: 5 });
+  }
 }
 
 // ============= Callback Query Handler =============
