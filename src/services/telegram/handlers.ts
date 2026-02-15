@@ -2,7 +2,7 @@
 // Routes incoming messages to the appropriate brain API
 
 import { sendMessage, sendMarkdown, answerCallbackQuery } from './client';
-import { createEntry, createInboxLogEntry } from '@/services/db/entries';
+import { createEntry, createInboxLogEntry, updateEntry } from '@/services/db/entries';
 import { searchEntries } from '@/services/db/entries';
 import { suggestRelations, addRelation } from '@/services/db/relations';
 import { eq } from 'drizzle-orm';
@@ -14,6 +14,11 @@ import { createLogger } from '@/lib/logger';
 const log = createLogger('telegram/handlers');
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ALLOWED_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+// Category emoji map
+const CAT_EMOJI: Record<string, string> = {
+  People: '👤', Project: '📋', Projects: '📋', Idea: '💡', Ideas: '💡', Admin: '✅', Reading: '📖',
+};
 
 // Telegram update types
 export interface TelegramUpdate {
@@ -62,7 +67,7 @@ export async function handleUpdate(update: TelegramUpdate): Promise<void> {
   const { chat, text } = update.message;
 
   if (!isAuthorized(chat.id)) {
-    await sendMessage(chat.id, 'Unauthorized. This bot is private.');
+    await sendMessage(chat.id, '🔒 Unauthorized. This bot is private.');
     return;
   }
 
@@ -81,6 +86,18 @@ export async function handleUpdate(update: TelegramUpdate): Promise<void> {
         return;
       case 'digest':
         await handleDigest(chat.id, command.args || 'daily');
+        return;
+      case 'done':
+        await handleDone(chat.id, command.args);
+        return;
+      case 'task':
+        await handleQuickCapture(chat.id, command.args, 'Admin');
+        return;
+      case 'idea':
+        await handleQuickCapture(chat.id, command.args, 'Idea');
+        return;
+      case 'remind':
+        await handleRemind(chat.id, command.args);
         return;
       case 'clear':
         await handleClear(chat.id);
@@ -114,14 +131,13 @@ function extractCommand(text: string): { name: string; args: string } | null {
 
 async function handleCapture(chatId: number, text: string): Promise<void> {
   if (!text || text.length < 3) {
-    await sendMessage(chatId, 'Please provide at least 3 characters to capture.');
+    await sendMessage(chatId, '⚠️ Please provide at least 3 characters to capture.');
     return;
   }
 
-  await sendMessage(chatId, 'Capturing...');
+  await sendMessage(chatId, '🧠 Classifying...');
 
   try {
-    // Classify with AI
     const classification = await classifyText(text);
     const { category, confidence, extracted_data } = classification;
 
@@ -168,11 +184,18 @@ async function handleCapture(chatId: number, text: string): Promise<void> {
       }
     } catch { /* non-critical */ }
 
-    // Build response with recategorize buttons
-    const emoji = { People: '👤', Project: '📋', Idea: '💡', Admin: '✅' }[category] || '📝';
+    const emoji = CAT_EMOJI[category] || '📝';
     const confPct = Math.round(confidence * 100);
+    const confBar = '█'.repeat(Math.round(confPct / 10)) + '░'.repeat(10 - Math.round(confPct / 10));
 
-    await sendMessage(chatId, `${emoji} Captured as *${category}*\n\n"${entryTitle}"\n\nConfidence: ${confPct}%`, {
+    await sendMessage(chatId, [
+      `${emoji} *Captured → ${category}*`,
+      '',
+      `📌 ${entryTitle}`,
+      `${confBar} ${confPct}%`,
+      '',
+      `_Wrong category? Tap to fix:_`,
+    ].join('\n'), {
       parse_mode: 'Markdown',
       reply_markup: {
         inline_keyboard: [[
@@ -185,17 +208,157 @@ async function handleCapture(chatId: number, text: string): Promise<void> {
     });
   } catch (error) {
     log.error('Telegram capture error', error);
-    await sendMessage(chatId, 'Failed to capture. Please try again.');
+    await sendMessage(chatId, '❌ Failed to capture. Please try again.');
+  }
+}
+
+async function handleQuickCapture(chatId: number, text: string, category: 'Admin' | 'Idea'): Promise<void> {
+  if (!text || text.length < 3) {
+    const cmd = category === 'Admin' ? '/task' : '/idea';
+    await sendMessage(chatId, `⚠️ Usage: ${cmd} <text>`);
+    return;
+  }
+
+  try {
+    const content: Record<string, unknown> = {};
+    if (category === 'Admin') {
+      content.adminCategory = 'Home';
+    } else {
+      content.ideaCategory = 'Life';
+      content.rawInsight = text;
+    }
+
+    const newEntry = await createEntry({
+      category,
+      title: text.slice(0, 100),
+      priority: category === 'Admin' ? 'Medium' : undefined,
+      content,
+    });
+
+    // Log to inbox
+    try {
+      await createInboxLogEntry({
+        rawInput: text,
+        category,
+        confidence: 1.0,
+        destinationId: newEntry.id,
+        status: 'Processed',
+      });
+    } catch { /* non-critical */ }
+
+    const emoji = CAT_EMOJI[category] || '📝';
+    const label = category === 'Admin' ? 'Task' : 'Idea';
+    await sendMessage(chatId, `${emoji} *${label} saved*\n\n📌 ${text.slice(0, 100)}`, { parse_mode: 'Markdown' });
+  } catch (error) {
+    log.error(`Telegram quick capture (${category}) error`, error);
+    await sendMessage(chatId, '❌ Failed to save. Please try again.');
+  }
+}
+
+async function handleDone(chatId: number, query: string): Promise<void> {
+  if (!query) {
+    await sendMessage(chatId, '⚠️ Usage: /done <search query>\n\nExample: /done buy groceries');
+    return;
+  }
+
+  try {
+    const results = await searchEntries(query, { limit: 5 });
+    // Filter to only actionable items (not already done/complete)
+    const actionable = results.filter(r =>
+      r.status && !['Done', 'Complete', 'Dormant'].includes(r.status)
+    );
+
+    if (actionable.length === 0) {
+      await sendMessage(chatId, `🔍 No active items found for "${query}".`);
+      return;
+    }
+
+    const lines = actionable.slice(0, 5).map((r, i) => {
+      const emoji = CAT_EMOJI[r.category] || '📝';
+      return `${i + 1}. ${emoji} ${r.title}`;
+    });
+
+    await sendMessage(chatId, [
+      `🔍 *Found ${actionable.length} item${actionable.length > 1 ? 's' : ''}*`,
+      '',
+      lines.join('\n'),
+      '',
+      '_Tap to mark done:_',
+    ].join('\n'), {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: actionable.slice(0, 5).map((r) => ([
+          { text: `✓ ${r.title.slice(0, 30)}`, callback_data: `done:${r.id}` },
+        ])),
+      },
+    });
+  } catch (error) {
+    log.error('Telegram done error', error);
+    await sendMessage(chatId, '❌ Search failed. Please try again.');
+  }
+}
+
+async function handleRemind(chatId: number, text: string): Promise<void> {
+  if (!text) {
+    await sendMessage(chatId, [
+      '⚠️ Usage: /remind <when> <what>',
+      '',
+      'Examples:',
+      '• /remind tomorrow Call dentist',
+      '• /remind friday Submit report',
+      '• /remind 2025-03-20 Renew passport',
+    ].join('\n'));
+    return;
+  }
+
+  try {
+    const { date, remainder } = parseNaturalDate(text);
+    if (!date || !remainder) {
+      await sendMessage(chatId, '⚠️ Could not parse date. Try: /remind tomorrow Call dentist');
+      return;
+    }
+
+    const dateStr = date.toISOString().split('T')[0];
+
+    const newEntry = await createEntry({
+      category: 'Admin',
+      title: remainder,
+      priority: 'Medium',
+      content: { adminCategory: 'Home' },
+      dueDate: dateStr,
+    });
+
+    try {
+      await createInboxLogEntry({
+        rawInput: text,
+        category: 'Admin',
+        confidence: 1.0,
+        destinationId: newEntry.id,
+        status: 'Processed',
+      });
+    } catch { /* non-critical */ }
+
+    const dayName = date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+
+    await sendMessage(chatId, [
+      '⏰ *Reminder set*',
+      '',
+      `📌 ${remainder}`,
+      `📅 ${dayName}`,
+    ].join('\n'), { parse_mode: 'Markdown' });
+  } catch (error) {
+    log.error('Telegram remind error', error);
+    await sendMessage(chatId, '❌ Failed to create reminder. Please try again.');
   }
 }
 
 async function handleAsk(chatId: number, question: string): Promise<void> {
   if (!question) {
-    await sendMessage(chatId, 'Usage: /ask <your question>');
+    await sendMessage(chatId, '⚠️ Usage: /ask <your question>');
     return;
   }
 
-  await sendMessage(chatId, 'Thinking...');
+  await sendMessage(chatId, '💭 Thinking...');
 
   try {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -208,7 +371,7 @@ async function handleAsk(chatId: number, question: string): Promise<void> {
     });
 
     if (!res.ok) {
-      await sendMessage(chatId, 'Agent returned an error. Try again later.');
+      await sendMessage(chatId, '❌ Agent returned an error. Try again later.');
       return;
     }
 
@@ -216,13 +379,13 @@ async function handleAsk(chatId: number, question: string): Promise<void> {
     await sendMarkdown(chatId, data.response || 'No response from agent.');
   } catch (error) {
     log.error('Telegram ask error', error);
-    await sendMessage(chatId, 'Failed to get answer. Please try again.');
+    await sendMessage(chatId, '❌ Failed to get answer. Please try again.');
   }
 }
 
 async function handleSearch(chatId: number, query: string): Promise<void> {
   if (!query) {
-    await sendMessage(chatId, 'Usage: /search <query>');
+    await sendMessage(chatId, '⚠️ Usage: /search <query>');
     return;
   }
 
@@ -230,37 +393,40 @@ async function handleSearch(chatId: number, query: string): Promise<void> {
     const results = await searchEntries(query);
 
     if (results.length === 0) {
-      await sendMessage(chatId, `No results for "${query}".`);
+      await sendMessage(chatId, `🔍 No results for "${query}".`);
       return;
     }
 
-    const categoryMap: Record<string, string> = {
-      People: '👤', Projects: '📋', Ideas: '💡', Admin: '✅',
-    };
-
-    const lines = results.slice(0, 10).map((r, i) => {
-      const emoji = categoryMap[r.category] || '📝';
-      const status = r.status ? ` [${r.status}]` : '';
+    const lines = results.slice(0, 8).map((r, i) => {
+      const emoji = CAT_EMOJI[r.category] || '📝';
+      const status = r.status ? ` · _${r.status}_` : '';
       return `${i + 1}. ${emoji} *${r.title}*${status}`;
     });
 
-    const header = `Found ${results.length} result${results.length > 1 ? 's' : ''} for "${query}":\n\n`;
-    await sendMessage(chatId, header + lines.join('\n'), { parse_mode: 'Markdown' });
+    const total = results.length > 8 ? ` (showing 8 of ${results.length})` : '';
+
+    await sendMessage(chatId, [
+      `🔍 *Results for "${query}"*${total}`,
+      '',
+      lines.join('\n'),
+    ].join('\n'), { parse_mode: 'Markdown' });
   } catch (error) {
     log.error('Telegram search error', error);
-    await sendMessage(chatId, 'Search failed. Please try again.');
+    await sendMessage(chatId, '❌ Search failed. Please try again.');
   }
 }
 
 async function handleDigest(chatId: number, type: string): Promise<void> {
   try {
-    await sendMessage(chatId, `Generating ${type} digest...`);
+    const emoji = type === 'weekly' ? '📊' : '☀️';
+    const label = type === 'weekly' ? 'weekly review' : 'daily briefing';
+    await sendMessage(chatId, `${emoji} Generating ${label}...`);
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const res = await fetch(`${baseUrl}/api/digest?type=${type}`);
 
     if (!res.ok) {
-      await sendMessage(chatId, 'Failed to generate digest.');
+      await sendMessage(chatId, '❌ Failed to generate digest.');
       return;
     }
 
@@ -269,24 +435,25 @@ async function handleDigest(chatId: number, type: string): Promise<void> {
 
     let header: string;
     if (type === 'weekly') {
-      header = `📊 *Weekly Review*\n\n`;
+      header = `📊 **Weekly Review**\n\n`;
     } else {
       const parts: string[] = [];
-      if (counts?.projects > 0) parts.push(`${counts.projects} projects`);
-      if (counts?.tasks > 0) parts.push(`${counts.tasks} tasks`);
-      if (counts?.followups > 0) parts.push(`${counts.followups} follow-ups`);
-      header = `☀️ *Daily Briefing*${parts.length > 0 ? ` (${parts.join(', ')})` : ''}\n\n`;
+      if (counts?.projects > 0) parts.push(`📋 ${counts.projects} projects`);
+      if (counts?.tasks > 0) parts.push(`✅ ${counts.tasks} tasks`);
+      if (counts?.followups > 0) parts.push(`👤 ${counts.followups} follow-ups`);
+      const summary = parts.length > 0 ? `\n${parts.join('  ·  ')}\n` : '';
+      header = `☀️ **Daily Briefing**${summary}\n`;
     }
 
-    await sendMarkdown(chatId, header + (aiSummary || 'No data for this period.'));
+    await sendMarkdown(chatId, header + (aiSummary || 'All clear — nothing on your plate today! 🎉'));
   } catch (error) {
     log.error('Telegram digest error', error);
-    await sendMessage(chatId, 'Digest failed. Please try again.');
+    await sendMessage(chatId, '❌ Digest failed. Please try again.');
   }
 }
 
 async function handleUrl(chatId: number, url: string): Promise<void> {
-  await sendMessage(chatId, 'Processing URL...');
+  await sendMessage(chatId, '🔗 Processing URL...');
 
   try {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -297,38 +464,39 @@ async function handleUrl(chatId: number, url: string): Promise<void> {
     });
 
     if (!res.ok) {
-      await sendMessage(chatId, 'Failed to process URL.');
+      await sendMessage(chatId, '❌ Failed to process URL.');
       return;
     }
 
     const data = await res.json();
 
     if (data.status === 'error') {
-      await sendMessage(chatId, `Error: ${data.error}`);
+      await sendMessage(chatId, `❌ ${data.error}`);
       return;
     }
 
     const lines = [
-      `💡 *${data.title || 'Untitled'}*`,
+      `📖 *${data.title || 'Untitled'}*`,
       '',
-      data.one_liner || '',
-      '',
-      data.full_summary ? data.full_summary.slice(0, 500) : '',
     ];
 
+    if (data.one_liner) lines.push(`_${data.one_liner}_`, '');
+    if (data.full_summary) lines.push(data.full_summary.slice(0, 500), '');
+
     if (data.key_points?.length > 0) {
-      lines.push('', '*Key points:*');
+      lines.push('*Key takeaways:*');
       data.key_points.slice(0, 5).forEach((p: string) => {
-        lines.push(`• ${p}`);
+        lines.push(`  • ${p}`);
       });
+      lines.push('');
     }
 
-    lines.push('', `Saved as *${data.category || 'Idea'}*`);
+    lines.push(`💾 Saved as *${data.category || 'Idea'}*`);
 
     await sendMessage(chatId, lines.join('\n'), { parse_mode: 'Markdown' });
   } catch (error) {
     log.error('Telegram URL error', error);
-    await sendMessage(chatId, 'Failed to process URL. Please try again.');
+    await sendMessage(chatId, '❌ Failed to process URL. Please try again.');
   }
 }
 
@@ -336,28 +504,33 @@ async function handleClear(chatId: number): Promise<void> {
   const sessionId = `telegram-${chatId}`;
   try {
     await db.delete(chatSessions).where(eq(chatSessions.sessionId, sessionId));
-    await sendMessage(chatId, 'Conversation cleared.');
+    await sendMessage(chatId, '🗑️ Conversation cleared.');
   } catch {
-    await sendMessage(chatId, 'Failed to clear conversation.');
+    await sendMessage(chatId, '❌ Failed to clear conversation.');
   }
 }
 
 async function handleHelp(chatId: number): Promise<void> {
   const help = [
-    '*Second Brain Bot*',
+    '🧠 *Second Brain Bot*',
     '',
-    'Send any text to capture it to your brain.',
+    'Send any text or URL and I\'ll save it to your brain.',
     '',
-    '*Commands:*',
-    '/capture <text> — Save a thought',
-    '/ask <question> — Ask your brain',
-    '/search <query> — Search entries',
+    '📥 *Capture*',
+    '/capture — AI-classified capture',
+    '/task — Quick-save as task',
+    '/idea — Quick-save as idea',
+    '/remind — Set a reminder with date',
+    '',
+    '🔍 *Retrieve*',
+    '/search — Search your entries',
+    '/ask — Ask your brain (AI)',
     '/digest — Daily briefing',
     '/digest weekly — Weekly review',
-    '/clear — Reset conversation',
-    '/help — Show this message',
     '',
-    'You can also send URLs to save and summarize them.',
+    '⚡ *Actions*',
+    '/done — Mark items complete',
+    '/clear — Reset AI conversation',
   ];
 
   await sendMessage(chatId, help.join('\n'), { parse_mode: 'Markdown' });
@@ -374,6 +547,30 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<void> {
     return;
   }
 
+  // Handle mark done: "done:<entryId>"
+  if (query.data.startsWith('done:')) {
+    const entryId = query.data.slice(5);
+    await answerCallbackQuery(query.id, 'Marking done...');
+
+    try {
+      const { getEntry } = await import('@/services/db/entries');
+      const entry = await getEntry(entryId);
+      if (!entry) {
+        await sendMessage(chatId, '⚠️ Entry not found.');
+        return;
+      }
+
+      const doneStatus = ['Projects'].includes(entry.category) ? 'Complete' : 'Done';
+      await updateEntry(entryId, { status: doneStatus });
+
+      await sendMessage(chatId, `✅ *Done!*\n\n~${entry.title}~`, { parse_mode: 'Markdown' });
+    } catch (error) {
+      log.error('Mark done error', error);
+      await sendMessage(chatId, '❌ Failed to mark done.');
+    }
+    return;
+  }
+
   // Handle recategorize: "recat:<entryId>:<newCategory>"
   if (query.data.startsWith('recat:')) {
     const [, entryId, newCategory] = query.data.split(':');
@@ -383,11 +580,10 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<void> {
       const { archiveEntry, createEntry: createNewEntry, getEntry } = await import('@/services/db/entries');
       const entry = await getEntry(entryId);
       if (!entry) {
-        await sendMessage(chatId, 'Entry not found.');
+        await sendMessage(chatId, '⚠️ Entry not found.');
         return;
       }
 
-      // Archive old, create new in target category
       await archiveEntry(entryId);
       await createNewEntry({
         category: newCategory as 'People' | 'Project' | 'Idea' | 'Admin',
@@ -395,14 +591,72 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<void> {
         content: entry.content as Record<string, unknown>,
       });
 
-      const emoji = { People: '👤', Project: '📋', Idea: '💡', Admin: '✅' }[newCategory] || '📝';
-      await sendMessage(chatId, `${emoji} Moved to *${newCategory}*`, { parse_mode: 'Markdown' });
+      const emoji = CAT_EMOJI[newCategory] || '📝';
+      await sendMessage(chatId, `${emoji} *Moved → ${newCategory}*`, { parse_mode: 'Markdown' });
     } catch (error) {
       log.error('Recategorize error', error);
-      await sendMessage(chatId, 'Failed to recategorize.');
+      await sendMessage(chatId, '❌ Failed to recategorize.');
     }
     return;
   }
+}
+
+// ============= Natural Language Date Parser =============
+
+function parseNaturalDate(text: string): { date: Date | null; remainder: string } {
+  const now = new Date();
+  const lower = text.toLowerCase();
+
+  // "tomorrow ..."
+  if (lower.startsWith('tomorrow')) {
+    const date = new Date(now);
+    date.setDate(date.getDate() + 1);
+    return { date, remainder: text.slice(9).trim() };
+  }
+
+  // "today ..."
+  if (lower.startsWith('today')) {
+    return { date: new Date(now), remainder: text.slice(6).trim() };
+  }
+
+  // "next week ..."
+  if (lower.startsWith('next week')) {
+    const date = new Date(now);
+    date.setDate(date.getDate() + 7);
+    return { date, remainder: text.slice(10).trim() };
+  }
+
+  // Day names: "monday ...", "tuesday ...", etc.
+  const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  for (let i = 0; i < days.length; i++) {
+    if (lower.startsWith(days[i])) {
+      const date = new Date(now);
+      const currentDay = date.getDay();
+      let daysAhead = i - currentDay;
+      if (daysAhead <= 0) daysAhead += 7;
+      date.setDate(date.getDate() + daysAhead);
+      return { date, remainder: text.slice(days[i].length).trim() };
+    }
+  }
+
+  // ISO date: "2025-03-20 ..."
+  const isoMatch = text.match(/^(\d{4}-\d{2}-\d{2})\s+(.*)/);
+  if (isoMatch) {
+    const date = new Date(isoMatch[1] + 'T12:00:00');
+    if (!isNaN(date.getTime())) {
+      return { date, remainder: isoMatch[2].trim() };
+    }
+  }
+
+  // "in N days ..."
+  const inDaysMatch = lower.match(/^in (\d+) days?\s+(.*)/i);
+  if (inDaysMatch) {
+    const date = new Date(now);
+    date.setDate(date.getDate() + parseInt(inDaysMatch[1]));
+    return { date, remainder: inDaysMatch[2].trim() };
+  }
+
+  return { date: null, remainder: text };
 }
 
 // ============= AI Classification (same as capture route) =============

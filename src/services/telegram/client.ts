@@ -87,12 +87,16 @@ export async function deleteWebhook(): Promise<TelegramResponse> {
 export async function setMyCommands(): Promise<TelegramResponse> {
   return callApi('setMyCommands', {
     commands: [
-      { command: 'capture', description: 'Save a thought to your brain' },
-      { command: 'ask', description: 'Ask your brain a question' },
-      { command: 'search', description: 'Search your entries' },
-      { command: 'digest', description: 'Get daily or weekly digest' },
-      { command: 'clear', description: 'Reset conversation history' },
-      { command: 'help', description: 'Show available commands' },
+      { command: 'capture', description: '🧠 AI-classified capture' },
+      { command: 'task', description: '✅ Quick-save as task' },
+      { command: 'idea', description: '💡 Quick-save as idea' },
+      { command: 'remind', description: '⏰ Set a reminder with date' },
+      { command: 'done', description: '✓ Mark items complete' },
+      { command: 'search', description: '🔍 Search your entries' },
+      { command: 'ask', description: '💭 Ask your brain (AI)' },
+      { command: 'digest', description: '☀️ Daily or weekly digest' },
+      { command: 'clear', description: '🗑️ Reset AI conversation' },
+      { command: 'help', description: '📋 Show all commands' },
     ],
   });
 }
