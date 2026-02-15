@@ -58,6 +58,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(result);
   }
 
+  if (action === 'commands') {
+    const { setMyCommands } = await import('@/services/telegram/client');
+    const result = await setMyCommands();
+    return NextResponse.json(result);
+  }
+
   // Diagnostic: check which env vars are set
   if (action === 'debug') {
     return NextResponse.json({
@@ -73,6 +79,6 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     status: 'ok',
-    message: 'Telegram webhook endpoint. Use ?action=set to register, ?action=delete to remove, ?action=debug to check env.',
+    message: 'Telegram webhook endpoint. Use ?action=set to register, ?action=delete to remove, ?action=commands to register bot commands, ?action=debug to check env.',
   });
 }

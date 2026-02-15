@@ -84,6 +84,19 @@ export async function deleteWebhook(): Promise<TelegramResponse> {
   return callApi('deleteWebhook');
 }
 
+export async function setMyCommands(): Promise<TelegramResponse> {
+  return callApi('setMyCommands', {
+    commands: [
+      { command: 'capture', description: 'Save a thought to your brain' },
+      { command: 'ask', description: 'Ask your brain a question' },
+      { command: 'search', description: 'Search your entries' },
+      { command: 'digest', description: 'Get daily or weekly digest' },
+      { command: 'clear', description: 'Reset conversation history' },
+      { command: 'help', description: 'Show available commands' },
+    ],
+  });
+}
+
 // Convert basic markdown to Telegram-safe HTML
 // Handles: **bold**, *italic*, `code`, ```code blocks```
 function markdownToTelegramHtml(md: string): string {

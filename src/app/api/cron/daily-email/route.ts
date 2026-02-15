@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { queryEntries } from '@/services/db/entries';
 import { gte } from 'drizzle-orm';
 import { isConfigured as isTelegramConfigured, sendMarkdown } from '@/services/telegram/client';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('cron/daily-email');
 
 const CRON_SECRET = process.env.CRON_SECRET;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
@@ -59,7 +62,7 @@ export async function GET(request: NextRequest) {
         const emailResult = await emailResponse.json();
         emailSent = emailResult.status !== 'error';
       } catch (emailError) {
-        console.error('Email send failed:', emailError);
+        log.error('Email send failed:', emailError);
       }
     }
 
@@ -78,12 +81,12 @@ export async function GET(request: NextRequest) {
           if (counts?.tasks > 0) parts.push(`${counts.tasks} tasks`);
           if (counts?.followups > 0) parts.push(`${counts.followups} follow-ups`);
 
-          const header = `☀️ <b>Daily Briefing</b>${parts.length > 0 ? ` (${parts.join(', ')})` : ''}\n\n`;
+          const header = `☀️ **Daily Briefing**${parts.length > 0 ? ` (${parts.join(', ')})` : ''}\n\n`;
           await sendMarkdown(TELEGRAM_CHAT_ID, header + (aiSummary || 'All clear today.'));
           telegramSent = true;
         }
       } catch (tgError) {
-        console.error('Telegram digest send failed:', tgError);
+        log.error('Telegram digest send failed:', tgError);
       }
     }
 
@@ -101,7 +104,7 @@ export async function GET(request: NextRequest) {
       telegramSent,
     });
   } catch (error) {
-    console.error('Daily cron error:', error);
+    log.error('Daily cron error:', error);
     return NextResponse.json(
       {
         status: 'error',
