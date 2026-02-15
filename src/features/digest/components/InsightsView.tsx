@@ -1,12 +1,9 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { fetchEntries, markDone, snoozeEntry, updateEntry, recategorize, deleteEntry } from '@/lib/api';
-import type { Category, Entry } from '@/lib/types';
-import type { StaleItem, DueTodayItem, InsightsData } from '../types';
-import { CATEGORY_SINGULAR, CATEGORY_TO_DB } from '../types';
+import type { InsightsData } from '../types';
 import { DigestContent } from './DigestContent';
 import { DigestSkeleton } from './DigestSkeleton';
+import { useDigestActions } from '../hooks/useDigestActions';
 
 interface InsightsViewProps {
   insights: InsightsData | null;
@@ -17,128 +14,23 @@ interface InsightsViewProps {
 }
 
 export function InsightsView({ insights, setInsights, isLoading, error, onRefresh }: InsightsViewProps) {
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [expandedItem, setExpandedItem] = useState<string | null>(null);
-  const [revisitNote, setRevisitNote] = useState('');
-  const [drillDownCategory, setDrillDownCategory] = useState<string | null>(null);
-  const [drillDownItems, setDrillDownItems] = useState<Entry[]>([]);
-  const [drillDownLoading, setDrillDownLoading] = useState(false);
-
-  const removeStaleItem = (id: string) => {
-    setInsights(prev => prev ? { ...prev, staleItems: prev.staleItems.filter(i => i.id !== id) } : null);
-  };
-
-  const handleComplete = async (item: StaleItem) => {
-    const db = CATEGORY_TO_DB[item.category];
-    if (!db) return;
-    setActionLoading(item.id);
-    try {
-      await markDone(item.id, db);
-      removeStaleItem(item.id);
-    } catch (err) {
-      console.warn('Failed to complete item:', err);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleSnooze = async (item: StaleItem) => {
-    const db = CATEGORY_TO_DB[item.category];
-    if (!db) return;
-    setActionLoading(item.id);
-    try {
-      const oneWeekFromNow = new Date();
-      oneWeekFromNow.setDate(oneWeekFromNow.getDate() + 7);
-      await snoozeEntry(item.id, db, oneWeekFromNow);
-      removeStaleItem(item.id);
-    } catch (err) {
-      console.warn('Failed to snooze item:', err);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleCompleteDueToday = async (item: DueTodayItem) => {
-    const db = CATEGORY_TO_DB[item.category];
-    if (!db) return;
-    setActionLoading(item.id);
-    try {
-      await markDone(item.id, db);
-      setInsights(prev => prev ? { ...prev, dueToday: prev.dueToday.filter(i => i.id !== item.id) } : null);
-    } catch (err) {
-      console.warn('Failed to complete item:', err);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleCategoryDrillDown = useCallback(async (category: string) => {
-    if (drillDownCategory === category) {
-      setDrillDownCategory(null);
-      return;
-    }
-    setDrillDownCategory(category);
-    setDrillDownLoading(true);
-    try {
-      const items = await fetchEntries(category.toLowerCase());
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-      const recentItems = items.filter(item =>
-        item.created && new Date(item.created) >= oneWeekAgo
-      );
-      setDrillDownItems(recentItems);
-    } catch {
-      setDrillDownItems([]);
-    }
-    setDrillDownLoading(false);
-  }, [drillDownCategory]);
-
-  const handleRevisit = async (item: StaleItem) => {
-    if (!revisitNote.trim()) return;
-    const db = CATEGORY_TO_DB[item.category];
-    if (!db) return;
-    setActionLoading(item.id);
-    try {
-      const result = await updateEntry(item.id, db, { notes: revisitNote.trim() });
-      if (result.status === 'error') {
-        console.warn('Failed to revisit item:', result.error);
-      } else {
-        removeStaleItem(item.id);
-        setRevisitNote('');
-        setExpandedItem(null);
-      }
-    } catch (err) {
-      console.warn('Failed to revisit item:', err);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleConvert = async (item: StaleItem, targetCategory: Category) => {
-    const currentCategory = CATEGORY_SINGULAR[item.category];
-    if (!currentCategory) return;
-    setActionLoading(item.id);
-    try {
-      await recategorize(item.id, currentCategory, targetCategory, item.title);
-      removeStaleItem(item.id);
-    } catch (err) {
-      console.warn('Failed to convert item:', err);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleDismiss = async (item: StaleItem) => {
-    setActionLoading(item.id);
-    try {
-      await deleteEntry(item.id);
-      removeStaleItem(item.id);
-    } catch (err) {
-      console.warn('Failed to dismiss item:', err);
-    } finally {
-      setActionLoading(null);
-    }
-  };
+  const {
+    actionLoading,
+    expandedItem,
+    setExpandedItem,
+    revisitNote,
+    setRevisitNote,
+    drillDownCategory,
+    drillDownItems,
+    drillDownLoading,
+    handleComplete,
+    handleSnooze,
+    handleCompleteDueToday,
+    handleCategoryDrillDown,
+    handleRevisit,
+    handleConvert,
+    handleDismiss,
+  } = useDigestActions({ setInsights });
 
   return (
     <div className="space-y-4">
