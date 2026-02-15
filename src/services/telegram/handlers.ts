@@ -1,8 +1,8 @@
 // Telegram command and message handlers
 // Routes incoming messages to the appropriate brain API
 
-import { sendMessage, sendMarkdown, answerCallbackQuery } from './client';
-import { createEntry, createInboxLogEntry, updateEntry } from '@/services/db/entries';
+import { sendMessage, sendMarkdown, answerCallbackQuery, getFile, getFileDownloadUrl } from './client';
+import { createEntry, createInboxLogEntry, updateEntry, countEntries } from '@/services/db/entries';
 import { searchEntries } from '@/services/db/entries';
 import { suggestRelations, addRelation } from '@/services/db/relations';
 import { eq } from 'drizzle-orm';
@@ -33,7 +33,10 @@ interface TelegramMessage {
   chat: { id: number; type: string };
   date: number;
   text?: string;
+  caption?: string;
   entities?: MessageEntity[];
+  voice?: { file_id: string; duration: number; mime_type?: string };
+  photo?: { file_id: string; width: number; height: number }[];
 }
 
 interface MessageEntity {
@@ -62,14 +65,29 @@ export async function handleUpdate(update: TelegramUpdate): Promise<void> {
     return;
   }
 
-  if (!update.message?.text) return;
-
-  const { chat, text } = update.message;
+  if (!update.message) return;
+  const { chat } = update.message;
 
   if (!isAuthorized(chat.id)) {
     await sendMessage(chat.id, '🔒 Unauthorized. This bot is private.');
     return;
   }
+
+  // Voice messages → transcribe and capture
+  if (update.message.voice) {
+    await handleVoice(chat.id, update.message.voice);
+    return;
+  }
+
+  // Photo messages → analyze and capture
+  if (update.message.photo) {
+    await handlePhoto(chat.id, update.message.photo, update.message.caption);
+    return;
+  }
+
+  // Text messages
+  if (!update.message.text) return;
+  const { text } = update.message;
 
   // Check for commands
   const command = extractCommand(text);
@@ -98,6 +116,15 @@ export async function handleUpdate(update: TelegramUpdate): Promise<void> {
         return;
       case 'remind':
         await handleRemind(chat.id, command.args);
+        return;
+      case 'snooze':
+        await handleSnooze(chat.id, command.args);
+        return;
+      case 'stats':
+        await handleStats(chat.id);
+        return;
+      case 'edit':
+        await handleEdit(chat.id, command.args);
         return;
       case 'clear':
         await handleClear(chat.id);
@@ -500,6 +527,239 @@ async function handleUrl(chatId: number, url: string): Promise<void> {
   }
 }
 
+async function handleVoice(chatId: number, voice: { file_id: string; duration: number }): Promise<void> {
+  await sendMessage(chatId, '🎙️ Transcribing...');
+
+  try {
+    const fileInfo = await getFile(voice.file_id);
+    if (!fileInfo.ok || !fileInfo.result?.file_path) {
+      await sendMessage(chatId, '❌ Could not retrieve voice file.');
+      return;
+    }
+
+    const downloadUrl = getFileDownloadUrl(fileInfo.result.file_path);
+    const audioResponse = await fetch(downloadUrl);
+    const audioBuffer = await audioResponse.arrayBuffer();
+
+    const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+    const file = new File([audioBuffer], 'voice.ogg', { type: 'audio/ogg' });
+    const transcription = await openai.audio.transcriptions.create({
+      file,
+      model: 'whisper-1',
+    });
+
+    const text = transcription.text?.trim();
+    if (!text) {
+      await sendMessage(chatId, '⚠️ Could not transcribe audio. Try again.');
+      return;
+    }
+
+    await sendMessage(chatId, `🎙️ _"${text}"_`, { parse_mode: 'Markdown' });
+    await handleCapture(chatId, text);
+  } catch (error) {
+    log.error('Voice transcription error', error);
+    await sendMessage(chatId, '❌ Failed to transcribe voice message.');
+  }
+}
+
+async function handlePhoto(
+  chatId: number,
+  photos: { file_id: string; width: number; height: number }[],
+  caption?: string
+): Promise<void> {
+  // If there's a caption, capture it as text
+  if (caption && caption.length >= 3) {
+    await handleCapture(chatId, caption);
+    return;
+  }
+
+  await sendMessage(chatId, '📸 Analyzing image...');
+
+  try {
+    // Get the largest photo (last in array)
+    const photo = photos[photos.length - 1];
+
+    const fileInfo = await getFile(photo.file_id);
+    if (!fileInfo.ok || !fileInfo.result?.file_path) {
+      await sendMessage(chatId, '❌ Could not retrieve photo.');
+      return;
+    }
+
+    const downloadUrl = getFileDownloadUrl(fileInfo.result.file_path);
+    const photoResponse = await fetch(downloadUrl);
+    const photoBuffer = await photoResponse.arrayBuffer();
+    const base64 = Buffer.from(photoBuffer).toString('base64');
+    const dataUrl = `data:image/jpeg;base64,${base64}`;
+
+    const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Describe this image concisely in 1-2 sentences for a personal knowledge base. Focus on what it shows and why someone might save it.' },
+          { type: 'image_url', image_url: { url: dataUrl } },
+        ],
+      }],
+      max_tokens: 150,
+    });
+
+    const description = response.choices[0]?.message?.content?.trim();
+    if (!description) {
+      await sendMessage(chatId, '⚠️ Could not analyze image. Try adding a caption.');
+      return;
+    }
+
+    const newEntry = await createEntry({
+      category: 'Idea',
+      title: description.slice(0, 100),
+      content: { rawInsight: description, ideaCategory: 'Life' },
+    });
+
+    try {
+      await createInboxLogEntry({
+        rawInput: `[Photo] ${description}`,
+        category: 'Idea',
+        confidence: 0.9,
+        destinationId: newEntry.id,
+        status: 'Processed',
+      });
+    } catch { /* non-critical */ }
+
+    await sendMessage(chatId, [
+      '📸 *Photo captured*',
+      '',
+      `💡 ${description}`,
+    ].join('\n'), {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '👤 People', callback_data: `recat:${newEntry.id}:People` },
+          { text: '📋 Project', callback_data: `recat:${newEntry.id}:Project` },
+          { text: '💡 Idea', callback_data: `recat:${newEntry.id}:Idea` },
+          { text: '✅ Admin', callback_data: `recat:${newEntry.id}:Admin` },
+        ]],
+      },
+    });
+  } catch (error) {
+    log.error('Photo capture error', error);
+    await sendMessage(chatId, '❌ Failed to process photo. Try adding a caption.');
+  }
+}
+
+async function handleSnooze(chatId: number, query: string): Promise<void> {
+  if (!query) {
+    await sendMessage(chatId, '⚠️ Usage: /snooze <search query>\n\nExample: /snooze dentist');
+    return;
+  }
+
+  try {
+    const results = await searchEntries(query, { limit: 5 });
+    const actionable = results.filter(r =>
+      r.status && !['Done', 'Complete', 'Dormant'].includes(r.status)
+    );
+
+    if (actionable.length === 0) {
+      await sendMessage(chatId, `🔍 No active items found for "${query}".`);
+      return;
+    }
+
+    const lines = actionable.slice(0, 5).map((r, i) => {
+      const emoji = CAT_EMOJI[r.category] || '📝';
+      const due = r.dueDate ? ` · 📅 ${new Date(r.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : '';
+      return `${i + 1}. ${emoji} ${r.title}${due}`;
+    });
+
+    await sendMessage(chatId, [
+      `⏰ *Select item to snooze:*`,
+      '',
+      lines.join('\n'),
+    ].join('\n'), {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: actionable.slice(0, 5).map((r) => ([
+          { text: `⏰ ${r.title.slice(0, 28)}`, callback_data: `snzp:${r.id}` },
+        ])),
+      },
+    });
+  } catch (error) {
+    log.error('Telegram snooze error', error);
+    await sendMessage(chatId, '❌ Search failed. Please try again.');
+  }
+}
+
+async function handleStats(chatId: number): Promise<void> {
+  try {
+    const [people, projects, ideas, admin, reading, done, complete] = await Promise.all([
+      countEntries({ category: 'People' }),
+      countEntries({ category: 'Projects' }),
+      countEntries({ category: 'Ideas' }),
+      countEntries({ category: 'Admin' }),
+      countEntries({ category: 'Reading' }),
+      countEntries({ status: 'Done' }),
+      countEntries({ status: 'Complete' }),
+    ]);
+
+    const total = people + projects + ideas + admin + reading;
+    const completed = done + complete;
+
+    await sendMessage(chatId, [
+      '📊 *Second Brain Stats*',
+      '',
+      `👤 People: *${people}*`,
+      `📋 Projects: *${projects}*`,
+      `💡 Ideas: *${ideas}*`,
+      `✅ Tasks: *${admin}*`,
+      `📖 Reading: *${reading}*`,
+      '',
+      `━━━━━━━━━━━━━━`,
+      `📦 Total: *${total}*`,
+      `✓ Completed: *${completed}*`,
+    ].join('\n'), { parse_mode: 'Markdown' });
+  } catch (error) {
+    log.error('Telegram stats error', error);
+    await sendMessage(chatId, '❌ Failed to load stats.');
+  }
+}
+
+async function handleEdit(chatId: number, query: string): Promise<void> {
+  if (!query) {
+    await sendMessage(chatId, '⚠️ Usage: /edit <search query>\n\nExample: /edit project report');
+    return;
+  }
+
+  try {
+    const results = await searchEntries(query, { limit: 5 });
+
+    if (results.length === 0) {
+      await sendMessage(chatId, `🔍 No results for "${query}".`);
+      return;
+    }
+
+    const lines = results.slice(0, 5).map((r, i) => {
+      const emoji = CAT_EMOJI[r.category] || '📝';
+      const status = r.status ? ` · _${r.status}_` : '';
+      return `${i + 1}. ${emoji} ${r.title}${status}`;
+    });
+
+    await sendMessage(chatId, [
+      `✏️ *Select item to edit:*`,
+      '',
+      lines.join('\n'),
+    ].join('\n'), {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: results.slice(0, 5).map((r) => ([
+          { text: `✏️ ${r.title.slice(0, 28)}`, callback_data: `edtp:${r.id}` },
+        ])),
+      },
+    });
+  } catch (error) {
+    log.error('Telegram edit error', error);
+    await sendMessage(chatId, '❌ Search failed. Please try again.');
+  }
+}
+
 async function handleClear(chatId: number): Promise<void> {
   const sessionId = `telegram-${chatId}`;
   try {
@@ -514,22 +774,27 @@ async function handleHelp(chatId: number): Promise<void> {
   const help = [
     '🧠 *Second Brain Bot*',
     '',
-    'Send any text or URL and I\'ll save it to your brain.',
+    'Send text, URLs, voice notes, or photos.',
     '',
     '📥 *Capture*',
     '/capture — AI-classified capture',
     '/task — Quick-save as task',
     '/idea — Quick-save as idea',
     '/remind — Set a reminder with date',
+    '🎙️ Voice note — Auto-transcribe & save',
+    '📸 Photo — AI-describe & save',
     '',
     '🔍 *Retrieve*',
     '/search — Search your entries',
     '/ask — Ask your brain (AI)',
     '/digest — Daily briefing',
     '/digest weekly — Weekly review',
+    '/stats — Brain overview',
     '',
     '⚡ *Actions*',
     '/done — Mark items complete',
+    '/snooze — Postpone a task',
+    '/edit — Change item status',
     '/clear — Reset AI conversation',
   ];
 
@@ -596,6 +861,110 @@ async function handleCallbackQuery(query: CallbackQuery): Promise<void> {
     } catch (error) {
       log.error('Recategorize error', error);
       await sendMessage(chatId, '❌ Failed to recategorize.');
+    }
+    return;
+  }
+
+  // Handle snooze pick: "snzp:<entryId>" — show duration options
+  if (query.data.startsWith('snzp:')) {
+    const entryId = query.data.slice(5);
+    await answerCallbackQuery(query.id);
+
+    await sendMessage(chatId, '⏰ *Snooze for how long?*', {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: 'Tomorrow', callback_data: `snz:${entryId}:1` },
+            { text: '+3 days', callback_data: `snz:${entryId}:3` },
+          ],
+          [
+            { text: 'Next week', callback_data: `snz:${entryId}:7` },
+            { text: 'Next month', callback_data: `snz:${entryId}:30` },
+          ],
+        ],
+      },
+    });
+    return;
+  }
+
+  // Handle snooze: "snz:<entryId>:<days>"
+  if (query.data.startsWith('snz:')) {
+    const parts = query.data.split(':');
+    const entryId = parts[1];
+    const days = parseInt(parts[2]);
+    await answerCallbackQuery(query.id, 'Snoozing...');
+
+    try {
+      const newDate = new Date();
+      newDate.setDate(newDate.getDate() + days);
+      const dateStr = newDate.toISOString().split('T')[0];
+
+      await updateEntry(entryId, { dueDate: dateStr });
+
+      const dayName = newDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+      await sendMessage(chatId, `⏰ *Snoozed → ${dayName}*`, { parse_mode: 'Markdown' });
+    } catch (error) {
+      log.error('Snooze error', error);
+      await sendMessage(chatId, '❌ Failed to snooze.');
+    }
+    return;
+  }
+
+  // Handle edit pick: "edtp:<entryId>" — show status options
+  if (query.data.startsWith('edtp:')) {
+    const entryId = query.data.slice(5);
+    await answerCallbackQuery(query.id);
+
+    try {
+      const { getEntry } = await import('@/services/db/entries');
+      const entry = await getEntry(entryId);
+      if (!entry) {
+        await sendMessage(chatId, '⚠️ Entry not found.');
+        return;
+      }
+
+      const statusOptions: Record<string, string[]> = {
+        People: ['New', 'Active', 'Dormant'],
+        Projects: ['Not Started', 'Active', 'Waiting', 'Complete'],
+        Ideas: ['Spark', 'Developing', 'Actionable'],
+        Admin: ['Todo', 'Done'],
+        Reading: ['Unread', 'Reading', 'Read'],
+      };
+
+      const options = statusOptions[entry.category] || ['Todo', 'Active', 'Done'];
+
+      await sendMessage(chatId, [
+        `✏️ *${entry.title}*`,
+        `Current: _${entry.status}_`,
+      ].join('\n'), {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            options.map(s => ({ text: s, callback_data: `est:${entryId}:${s}` })),
+          ],
+        },
+      });
+    } catch (error) {
+      log.error('Edit pick error', error);
+      await sendMessage(chatId, '❌ Failed to load entry.');
+    }
+    return;
+  }
+
+  // Handle edit status: "est:<entryId>:<status>"
+  if (query.data.startsWith('est:')) {
+    const parts = query.data.split(':');
+    const entryId = parts[1];
+    const newStatus = parts.slice(2).join(':'); // status may contain spaces
+    await answerCallbackQuery(query.id, `Setting ${newStatus}...`);
+
+    try {
+      await updateEntry(entryId, { status: newStatus });
+      await sendMessage(chatId, `✏️ Status → *${newStatus}*`, { parse_mode: 'Markdown' });
+    } catch (error) {
+      log.error('Edit status error', error);
+      await sendMessage(chatId, '❌ Failed to update.');
     }
     return;
   }

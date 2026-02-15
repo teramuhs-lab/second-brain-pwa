@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { queryEntries } from '@/services/db/entries';
 import { gte } from 'drizzle-orm';
-import { isConfigured as isTelegramConfigured, sendMarkdown } from '@/services/telegram/client';
+import { isConfigured as isTelegramConfigured, sendMarkdown, sendMessage } from '@/services/telegram/client';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('cron/daily-email');
@@ -83,6 +83,21 @@ export async function GET(request: NextRequest) {
 
           const header = `☀️ **Daily Briefing**${parts.length > 0 ? ` (${parts.join(', ')})` : ''}\n\n`;
           await sendMarkdown(TELEGRAM_CHAT_ID, header + (aiSummary || 'All clear today.'));
+
+          // Send due-today items with action buttons
+          const dueItems = [...(digest.data?.tasks || []), ...(digest.data?.followups || [])];
+          if (dueItems.length > 0) {
+            const buttons = dueItems.slice(0, 5).map((item: { id: string; title: string }) => ([
+              { text: `✓ ${item.title.slice(0, 20)}`, callback_data: `done:${item.id}` },
+              { text: '⏰ Snooze', callback_data: `snzp:${item.id}` },
+            ]));
+
+            await sendMessage(TELEGRAM_CHAT_ID, '📋 *Due today — tap to act:*', {
+              parse_mode: 'Markdown' as const,
+              reply_markup: { inline_keyboard: buttons },
+            });
+          }
+
           telegramSent = true;
         }
       } catch (tgError) {

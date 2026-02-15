@@ -92,9 +92,12 @@ export async function setMyCommands(): Promise<TelegramResponse> {
       { command: 'idea', description: '💡 Quick-save as idea' },
       { command: 'remind', description: '⏰ Set a reminder with date' },
       { command: 'done', description: '✓ Mark items complete' },
+      { command: 'snooze', description: '⏰ Postpone a task' },
+      { command: 'edit', description: '✏️ Change item status' },
       { command: 'search', description: '🔍 Search your entries' },
       { command: 'ask', description: '💭 Ask your brain (AI)' },
       { command: 'digest', description: '☀️ Daily or weekly digest' },
+      { command: 'stats', description: '📊 Brain overview' },
       { command: 'clear', description: '🗑️ Reset AI conversation' },
       { command: 'help', description: '📋 Show all commands' },
     ],
@@ -126,6 +129,14 @@ function markdownToTelegramHtml(md: string): string {
     .replace(/^[-•]\s+/gm, '• ');
 
   return html;
+}
+
+export async function getFile(fileId: string): Promise<TelegramResponse<{ file_path: string }>> {
+  return callApi('getFile', { file_id: fileId });
+}
+
+export function getFileDownloadUrl(filePath: string): string {
+  return `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
 }
 
 export function isConfigured(): boolean {
