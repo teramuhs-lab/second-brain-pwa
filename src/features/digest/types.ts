@@ -19,6 +19,14 @@ export interface DueTodayItem {
   time?: string;
 }
 
+export interface EmailPulse {
+  totalEmails: number;
+  urgentCount: number;
+  deadlineCount: number;
+  topSenders: { name: string; count: number }[];
+  googleConnected: boolean;
+}
+
 export interface InsightsData {
   status: string;
   staleItems: StaleItem[];
@@ -30,6 +38,7 @@ export interface InsightsData {
     newIdeas: number;
   };
   aiInsights: string | null;
+  emailPulse?: EmailPulse | null;
 }
 
 // Map plural category names (from API) to singular (for recategorize)

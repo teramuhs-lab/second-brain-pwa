@@ -87,6 +87,69 @@ export function InsightsView({ insights, setInsights, isLoading, error, onRefres
         </div>
       )}
 
+      {/* Email Pulse */}
+      {insights && !isLoading && insights.emailPulse && insights.emailPulse.totalEmails > 0 && (
+        <div className="glass-card p-6 border-l-4 border-l-amber-400/60">
+          <div className="mb-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-[var(--text-primary)]">Email Pulse</h2>
+              <span className="text-xs text-[var(--text-muted)]">yesterday</span>
+            </div>
+            <p className="text-sm text-[var(--text-muted)]/70">
+              {insights.emailPulse.totalEmails} email{insights.emailPulse.totalEmails !== 1 ? 's' : ''}
+              {(insights.emailPulse.urgentCount + insights.emailPulse.deadlineCount) > 0
+                ? ` · ${insights.emailPulse.urgentCount + insights.emailPulse.deadlineCount} need attention`
+                : ' · inbox clear'}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {insights.emailPulse.urgentCount > 0 && (
+              <span className="text-[10px] font-medium text-red-400 bg-red-900/20 px-1.5 py-0.5 rounded">
+                {insights.emailPulse.urgentCount} urgent
+              </span>
+            )}
+            {insights.emailPulse.deadlineCount > 0 && (
+              <span className="text-[10px] font-medium text-amber-400 bg-amber-900/20 px-1.5 py-0.5 rounded">
+                {insights.emailPulse.deadlineCount} deadline
+              </span>
+            )}
+            {insights.emailPulse.totalEmails - insights.emailPulse.urgentCount - insights.emailPulse.deadlineCount > 0 && (
+              <span className="text-[10px] font-medium text-[var(--text-muted)] bg-[var(--bg-surface)] px-1.5 py-0.5 rounded">
+                {insights.emailPulse.totalEmails - insights.emailPulse.urgentCount - insights.emailPulse.deadlineCount} other
+              </span>
+            )}
+          </div>
+
+          {insights.emailPulse.topSenders.length > 0 && (
+            <div className="rounded-xl bg-[var(--bg-elevated)] p-3">
+              <p className="text-xs font-medium text-[var(--text-secondary)] mb-1.5">Top senders</p>
+              <div className="space-y-1">
+                {insights.emailPulse.topSenders.slice(0, 3).map((sender) => (
+                  <div key={sender.name} className="flex items-center justify-between">
+                    <span className="text-sm text-[var(--text-primary)]">{sender.name}</span>
+                    <span className="text-xs text-[var(--text-muted)]">
+                      {sender.count} email{sender.count !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Google connect prompt */}
+      {insights && !isLoading && insights.emailPulse && !insights.emailPulse.googleConnected && (
+        <a
+          href="/api/google/auth"
+          className="glass-card p-4 flex items-center justify-between group hover:bg-[var(--bg-surface)] transition-colors block"
+        >
+          <span className="text-xs text-[var(--text-muted)]">Connect Gmail to see your email pulse</span>
+          <span className="text-xs text-[var(--accent-cyan)] group-hover:underline">Connect Google</span>
+        </a>
+      )}
+
       {/* AI Insights Card */}
       {insights && !isLoading && (
         <div className="glass-card p-6">

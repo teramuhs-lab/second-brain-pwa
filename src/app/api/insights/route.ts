@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { queryEntries } from '@/services/db/entries';
 import { getActivitySummary, getFrequentlySnoozed } from '@/services/db/activity';
+import { isGoogleConnected } from '@/services/google/auth';
+import { fetchYesterdayEmailsOrEmpty, classifyEmails } from '@/services/digest/email';
+import type { EmailDigestItem } from '@/lib/types';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
@@ -48,8 +51,12 @@ export async function GET() {
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const todayStr = now.toISOString().split('T')[0];
 
-    // Fetch all entries from Neon
-    const allEntries = await queryEntries({ limit: 500 });
+    // Fetch entries and email data in parallel
+    const [allEntries, googleConnected, emailResult] = await Promise.all([
+      queryEntries({ limit: 500 }),
+      isGoogleConnected(),
+      fetchYesterdayEmailsOrEmpty(),
+    ]);
 
     // Find stale items (not edited in 2+ weeks, still active)
     const staleItems: StaleItem[] = [];
@@ -156,6 +163,36 @@ export async function GET() {
       // Activity data is optional
     }
 
+    // Build email pulse
+    let emailPulse: {
+      totalEmails: number;
+      urgentCount: number;
+      deadlineCount: number;
+      topSenders: { name: string; count: number }[];
+      googleConnected: boolean;
+    } | null = null;
+    let classifiedEmails: EmailDigestItem[] = [];
+
+    if (googleConnected && emailResult.emails.length > 0) {
+      classifiedEmails = await classifyEmails(emailResult.emails);
+
+      const urgentCount = classifiedEmails.filter(e => e.yCategory === 'Urgent & High-Priority').length;
+      const deadlineCount = classifiedEmails.filter(e => e.yCategory === 'Deadline-Driven').length;
+
+      const senderCounts: Record<string, number> = {};
+      for (const e of classifiedEmails) {
+        senderCounts[e.senderName] = (senderCounts[e.senderName] || 0) + 1;
+      }
+      const topSenders = Object.entries(senderCounts)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 5)
+        .map(([name, count]) => ({ name, count }));
+
+      emailPulse = { totalEmails: classifiedEmails.length, urgentCount, deadlineCount, topSenders, googleConnected: true };
+    } else {
+      emailPulse = { totalEmails: 0, urgentCount: 0, deadlineCount: 0, topSenders: [], googleConnected };
+    }
+
     // Generate AI insights
     let aiInsights: string | null = null;
     if (OPENAI_API_KEY && (weeklyStats.totalCaptures > 0 || staleItems.length > 0 || dueToday.length > 0)) {
@@ -173,6 +210,22 @@ export async function GET() {
         activityContext += '\nFREQUENTLY SNOOZED (past 30 days, likely stuck):\n';
         for (const item of snoozedItems) {
           activityContext += `- "${item.title}" — snoozed ${item.snoozeCount} times\n`;
+        }
+      }
+
+      // Build email context for AI prompt
+      let emailContext = '';
+      if (classifiedEmails.length > 0) {
+        const actionable = classifiedEmails.filter(e =>
+          e.yCategory === 'Urgent & High-Priority' || e.yCategory === 'Deadline-Driven'
+        );
+        if (actionable.length > 0) {
+          emailContext = '\nURGENT/DEADLINE EMAILS (yesterday):\n';
+          for (const e of actionable.slice(0, 5)) {
+            emailContext += `- [${e.yCategory}] ${e.senderName}: ${e.aiSummary}\n`;
+          }
+        } else {
+          emailContext = `\nEMAIL PULSE: ${classifiedEmails.length} emails from yesterday, none urgent.\n`;
         }
       }
 
@@ -195,14 +248,14 @@ ${dueToday.length > 0 ? dueToday.map(i => `- "${i.title}" (${i.category}${i.time
 WEEKLY STATS:
 - Captured: ${weeklyStats.totalCaptures} items (People: ${weeklyStats.byCategory.People || 0}, Projects: ${weeklyStats.byCategory.Projects || 0}, Ideas: ${weeklyStats.byCategory.Ideas || 0}, Tasks: ${weeklyStats.byCategory.Admin || 0})
 - Completed: ${weeklyStats.completedTasks} tasks
-${activityContext}
+${activityContext}${emailContext}
 STALE ITEMS (untouched 2+ weeks):
 ${staleItems.length > 0 ? staleItems.slice(0, 5).map(s => `- "${s.title}" (${s.category}, ${s.daysSinceEdit} days idle)`).join('\n') : '- None'}
 
 RECENT THEMES: ${recentTexts.slice(0, 10).join(' ').slice(0, 400)}
 
 Give exactly 3 insights:
-1. **Priority**: What should I focus on right now and why? (name specific items)
+1. **Priority**: What should I focus on right now and why? (name specific items, mention urgent emails if any)
 2. **Stale**: Which idle item should I complete, archive, or revisit first? If any items have been snoozed many times, call them out as potentially stuck.
 3. **Pattern**: One observation about my focus or momentum this week based on the activity data.
 
@@ -223,6 +276,7 @@ Be direct and specific. Under 100 words.`,
       dueToday,
       weeklyStats,
       aiInsights,
+      emailPulse,
       generatedAt: now.toISOString(),
     });
   } catch (error) {
