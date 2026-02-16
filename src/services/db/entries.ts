@@ -59,21 +59,7 @@ export async function createEntry(input: CreateEntryInput) {
   const dbCategory = CATEGORY_TO_DB_CATEGORY[input.category] || input.category;
   const defaultStatus = DEFAULT_STATUS[input.category];
 
-  // 1. Generate embedding
-  const embeddingText = buildEmbeddingText(
-    input.title,
-    input.content || {}
-  );
-  let embedding = input.embedding;
-  if (!embedding) {
-    try {
-      embedding = await generateEmbedding(embeddingText);
-    } catch (err) {
-      log.error('Failed to generate embedding', err);
-    }
-  }
-
-  // 2. Insert into Neon
+  // 1. Insert into Neon first (fast) so the caller isn't blocked by embedding generation
   const [neonEntry] = await db
     .insert(entries)
     .values({
@@ -82,10 +68,18 @@ export async function createEntry(input: CreateEntryInput) {
       status: input.status || defaultStatus,
       priority: input.priority || null,
       content: input.content || {},
-      embedding: embedding || null,
+      embedding: input.embedding || null,
       dueDate: input.dueDate ? new Date(input.dueDate) : null,
     })
     .returning();
+
+  // 2. Generate embedding async (non-blocking) — backfills after insert
+  if (!input.embedding) {
+    const embeddingText = buildEmbeddingText(input.title, input.content || {});
+    generateEmbedding(embeddingText)
+      .then(embedding => db.update(entries).set({ embedding }).where(eq(entries.id, neonEntry.id)))
+      .catch(err => log.error('Failed to generate embedding', err));
+  }
 
   return neonEntry;
 }
